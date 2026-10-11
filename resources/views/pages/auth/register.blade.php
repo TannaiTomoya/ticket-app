@@ -67,6 +67,7 @@
                     :checked="old('role') === \App\Enums\UserRole::Organizer->value"
                 />
             </flux:radio.group>
+            <flux:error name="role" class="-mt-3" />
 
             <div class="flex items-center justify-end">
                 <flux:button type="submit" variant="primary" class="w-full" data-test="register-user-button">
