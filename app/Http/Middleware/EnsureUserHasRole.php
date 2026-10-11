@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\UserRole;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,11 +16,9 @@ class EnsureUserHasRole
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        $user = $request->user();
+        $allowedRoles = array_map(UserRole::from(...), $roles);
 
-        if ($user === null || ! in_array($user->role->value, $roles, true)) {
-            abort(403);
-        }
+        abort_unless(in_array($request->user()?->role, $allowedRoles, true), 403);
 
         return $next($request);
     }
