@@ -22,10 +22,10 @@ class OrderItemFactory extends Factory
         return [
             'order_id' => Order::factory(),
             'ticket_type_id' => fn (array $attributes) => TicketType::factory()->state([
-                'event_id' => Order::find($attributes['order_id'])->event_id,
+                'event_id' => Order::query()->whereKey($attributes['order_id'])->value('event_id'),
             ]),
             'quantity' => 1,
-            'unit_price' => fn (array $attributes) => TicketType::find($attributes['ticket_type_id'])->price,
+            'unit_price' => fn (array $attributes) => TicketType::query()->whereKey($attributes['ticket_type_id'])->value('price'),
         ];
     }
 }
