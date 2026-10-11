@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\EventStatus;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,11 +20,12 @@ use Illuminate\Support\Carbon;
  * @property string $description
  * @property string $venue
  * @property Carbon $starts_at
+ * @property Carbon $ends_at
  * @property EventStatus $status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['title', 'description', 'venue', 'starts_at'])]
+#[Fillable(['title', 'description', 'venue', 'starts_at', 'ends_at'])]
 class Event extends Model
 {
     /** @use HasFactory<EventFactory> */
@@ -37,6 +40,7 @@ class Event extends Model
     {
         return [
             'starts_at' => 'datetime',
+            'ends_at' => 'datetime',
             'status' => EventStatus::class,
         ];
     }
@@ -63,5 +67,35 @@ class Event extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    /**
+     * Scope a query to only include published events.
+     *
+     * @param  Builder<Event>  $query
+     */
+    #[Scope]
+    protected function published(Builder $query): void
+    {
+        $query->where('status', EventStatus::Published);
+    }
+
+    /**
+     * Scope a query to only include events that have not started yet.
+     *
+     * @param  Builder<Event>  $query
+     */
+    #[Scope]
+    protected function upcoming(Builder $query): void
+    {
+        $query->where('starts_at', '>', now());
+    }
+
+    /**
+     * Determine whether the event is published.
+     */
+    public function isPublished(): bool
+    {
+        return $this->status === EventStatus::Published;
     }
 }

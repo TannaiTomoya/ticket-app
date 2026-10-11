@@ -1,0 +1,61 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\Event;
+use App\Models\User;
+
+class EventPolicy
+{
+    /**
+     * Published events are visible to everyone; others only to the organizer and admins.
+     */
+    public function view(?User $user, Event $event): bool
+    {
+        if ($event->isPublished()) {
+            return true;
+        }
+
+        return $user !== null && ($this->owns($user, $event) || $user->isAdmin());
+    }
+
+    /**
+     * Only organizers can create events.
+     */
+    public function create(User $user): bool
+    {
+        return $user->isOrganizer();
+    }
+
+    /**
+     * Only the organizer of the event can update it.
+     */
+    public function update(User $user, Event $event): bool
+    {
+        return $this->owns($user, $event);
+    }
+
+    /**
+     * The organizer can delete the event only while it has no orders.
+     */
+    public function delete(User $user, Event $event): bool
+    {
+        return $this->owns($user, $event) && ! $event->orders()->exists();
+    }
+
+    /**
+     * Only admins can unpublish events.
+     */
+    public function unpublish(User $user, Event $event): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /**
+     * Determine whether the user is the organizer of the event.
+     */
+    private function owns(User $user, Event $event): bool
+    {
+        return $user->id === $event->organizer_id;
+    }
+}

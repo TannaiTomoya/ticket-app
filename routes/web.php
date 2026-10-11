@@ -9,9 +9,18 @@ Route::view('/', 'welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', fn (Request $request) => redirect(match ($request->user()->role) {
         UserRole::Admin => '/admin/events',
-        UserRole::Organizer => '/organizer/events',
+        UserRole::Organizer => route('organizer.events.index'),
         UserRole::Customer => '/orders',
     }))->name('dashboard');
 });
+
+Route::middleware(['auth', 'verified', 'role:organizer'])
+    ->prefix('organizer/events')
+    ->name('organizer.events.')
+    ->group(function () {
+        Route::livewire('/', 'pages::organizer.events.index')->name('index');
+        Route::livewire('create', 'pages::organizer.events.create')->name('create');
+        Route::livewire('{event}/edit', 'pages::organizer.events.edit')->name('edit');
+    });
 
 require __DIR__.'/settings.php';

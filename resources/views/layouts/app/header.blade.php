@@ -13,6 +13,11 @@
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                     {{ __('Dashboard') }}
                 </flux:navbar.item>
+                @can('create', App\Models\Event::class)
+                    <flux:navbar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>
+                        主催者メニュー
+                    </flux:navbar.item>
+                @endcan
             </flux:navbar>
 
             <flux:spacer />
@@ -56,6 +61,11 @@
                     <flux:sidebar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard')  }}
                     </flux:sidebar.item>
+                    @can('create', App\Models\Event::class)
+                        <flux:sidebar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>
+                            主催者メニュー
+                        </flux:sidebar.item>
+                    @endcan
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

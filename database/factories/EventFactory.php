@@ -25,6 +25,7 @@ class EventFactory extends Factory
             'description' => fake()->paragraph(),
             'venue' => fake()->address(),
             'starts_at' => now()->addDays(14)->setTime(10, 0),
+            'ends_at' => now()->addDays(14)->setTime(12, 0),
             'status' => EventStatus::Draft,
         ];
     }
@@ -56,6 +57,7 @@ class EventFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'starts_at' => now()->subDays(7)->setTime(10, 0),
+            'ends_at' => now()->subDays(7)->setTime(12, 0),
         ]);
     }
 }
