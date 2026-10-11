@@ -16,11 +16,22 @@
                 <flux:navbar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
                     イベント一覧
                 </flux:navbar.item>
+                <flux:navbar.item icon="clipboard-document-list" :href="url('/orders')" :current="request()->is('orders*')" wire:navigate>
+                    マイチケット
+                </flux:navbar.item>
                 @can('create', App\Models\Event::class)
                     <flux:navbar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>
                         主催者メニュー
                     </flux:navbar.item>
                 @endcan
+                @if (auth()->user()->isAdmin())
+                    <flux:navbar.item icon="shield-check" :href="url('/admin/events')" :current="request()->is('admin/events*')" wire:navigate>
+                        イベント管理
+                    </flux:navbar.item>
+                    <flux:navbar.item icon="users" :href="url('/admin/users')" :current="request()->is('admin/users*')" wire:navigate>
+                        ユーザー管理
+                    </flux:navbar.item>
+                @endif
             </flux:navbar>
 
             <flux:spacer />
@@ -67,11 +78,22 @@
                     <flux:sidebar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
                         イベント一覧
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="clipboard-document-list" :href="url('/orders')" :current="request()->is('orders*')" wire:navigate>
+                        マイチケット
+                    </flux:sidebar.item>
                     @can('create', App\Models\Event::class)
                         <flux:sidebar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>
                             主催者メニュー
                         </flux:sidebar.item>
                     @endcan
+                    @if (auth()->user()->isAdmin())
+                        <flux:sidebar.item icon="shield-check" :href="url('/admin/events')" :current="request()->is('admin/events*')" wire:navigate>
+                            イベント管理
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="users" :href="url('/admin/users')" :current="request()->is('admin/users*')" wire:navigate>
+                            ユーザー管理
+                        </flux:sidebar.item>
+                    @endif
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

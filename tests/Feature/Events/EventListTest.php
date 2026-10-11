@@ -51,7 +51,8 @@ test('an event with a free ticket type shows free as its lowest price', function
     $response = $this->get(route('home'));
 
     $response->assertOk()
-        ->assertSee('無料〜')
+        ->assertSee('無料')
+        ->assertDontSee('無料〜')
         ->assertDontSee('3,000円〜');
 });
 
@@ -90,21 +91,35 @@ test('guests can view the list and see login and register links', function () {
     $response->assertOk()
         ->assertSee('ログイン')
         ->assertSee('会員登録')
+        ->assertDontSee('マイチケット')
         ->assertDontSee('data-test="public-user-menu"', false);
 });
 
-test('signed in users see the user menu, and only organizers see the organizer menu', function (Closure $makeUser, bool $seesOrganizerMenu) {
+test('signed in users see the menu items for their role', function (Closure $makeUser, bool $seesOrganizerMenu, bool $seesAdminMenu) {
     $this->actingAs($makeUser());
 
     $response = $this->get(route('home'));
 
     $response->assertOk()
         ->assertSee('data-test="public-user-menu"', false)
+        ->assertSee('マイチケット')
         ->assertDontSee('会員登録');
     $seesOrganizerMenu
         ? $response->assertSee('主催者メニュー')
         : $response->assertDontSee('主催者メニュー');
+    $seesAdminMenu
+        ? $response->assertSee('イベント管理')->assertSee('ユーザー管理')
+        : $response->assertDontSee('イベント管理')->assertDontSee('ユーザー管理');
 })->with([
-    'customer' => [fn () => User::factory()->create(), false],
-    'organizer' => [fn () => User::factory()->organizer()->create(), true],
+    'customer' => [fn () => User::factory()->create(), false, false],
+    'organizer' => [fn () => User::factory()->organizer()->create(), true, false],
+    'admin' => [fn () => User::factory()->admin()->create(), false, true],
 ]);
+
+test('event cards show an image placeholder', function () {
+    Event::factory()->published()->create();
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee('data-test="event-image-placeholder"', false);
+});

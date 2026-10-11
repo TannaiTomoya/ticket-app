@@ -41,4 +41,24 @@ class OrderFactory extends Factory
             'paid_at' => now(),
         ]);
     }
+
+    /**
+     * Indicate that the order was cancelled before payment.
+     */
+    public function cancelled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => OrderStatus::Cancelled,
+        ]);
+    }
+
+    /**
+     * Indicate that the order was paid and then refunded.
+     */
+    public function refunded(): static
+    {
+        return $this->paid()->state(fn (array $attributes) => [
+            'status' => OrderStatus::Refunded,
+        ]);
+    }
 }

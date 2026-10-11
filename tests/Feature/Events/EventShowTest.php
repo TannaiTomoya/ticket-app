@@ -7,7 +7,8 @@ use App\Models\TicketType;
 use App\Models\User;
 
 test('guests can view a published event with its ticket types', function () {
-    $event = Event::factory()->published()->create(['title' => '秋の朗読会', 'venue' => '中央図書館']);
+    $organizer = User::factory()->organizer()->create(['name' => '八幡平観光協会']);
+    $event = Event::factory()->published()->for($organizer, 'organizer')->create(['title' => '秋の朗読会', 'venue' => '中央図書館']);
     TicketType::factory()->for($event)->create(['name' => '一般', 'price' => 1500]);
     TicketType::factory()->for($event)->free()->create(['name' => '小学生']);
 
@@ -16,6 +17,7 @@ test('guests can view a published event with its ticket types', function () {
     $response->assertOk()
         ->assertSee('秋の朗読会')
         ->assertSee('中央図書館')
+        ->assertSee('主催: 八幡平観光協会')
         ->assertSee('一般')
         ->assertSee('1,500円')
         ->assertSee('小学生')

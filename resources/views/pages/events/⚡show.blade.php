@@ -18,7 +18,7 @@ new #[Layout('layouts::public')] class extends Component {
     {
         $this->authorize('view', $event);
 
-        $this->event = $event;
+        $this->event = $event->load('organizer');
     }
 
     /**
@@ -56,6 +56,10 @@ new #[Layout('layouts::public')] class extends Component {
             <flux:text class="flex items-center gap-2">
                 <flux:icon.map-pin variant="micro" />
                 {{ $event->venue }}
+            </flux:text>
+            <flux:text class="flex items-center gap-2">
+                <flux:icon.user variant="micro" />
+                主催: {{ $event->organizer->name }}
             </flux:text>
         </div>
     </div>

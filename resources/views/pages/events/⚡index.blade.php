@@ -41,6 +41,9 @@ new #[Layout('layouts::public'), Title('イベント一覧')] class extends Comp
             @foreach ($this->events as $event)
                 <a href="{{ route('events.show', $event) }}" wire:navigate wire:key="event-{{ $event->id }}" class="block" data-test="event-card">
                     <flux:card class="h-full space-y-3 transition hover:border-zinc-400 dark:hover:border-zinc-500">
+                        <div class="flex aspect-video items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-700" data-test="event-image-placeholder">
+                            <flux:icon.photo class="size-10 text-zinc-400 dark:text-zinc-500" />
+                        </div>
                         <flux:heading size="lg">{{ $event->title }}</flux:heading>
                         <div class="space-y-1">
                             <flux:text class="flex items-center gap-2">
@@ -54,7 +57,7 @@ new #[Layout('layouts::public'), Title('イベント一覧')] class extends Comp
                         </div>
                         @if ($event->ticket_types_min_price !== null)
                             <flux:badge color="zinc">
-                                {{ (int) $event->ticket_types_min_price === 0 ? '無料' : number_format($event->ticket_types_min_price).'円' }}〜
+                                {{ (int) $event->ticket_types_min_price === 0 ? '無料' : number_format($event->ticket_types_min_price).'円〜' }}
                             </flux:badge>
                         @endif
                     </flux:card>

@@ -19,6 +19,14 @@ test('remaining subtracts the seats of paid orders', function () {
     expect($ticketType->remaining())->toBe(17);
 });
 
+test('remaining ignores cancelled and refunded orders', function (string $state) {
+    $ticketType = TicketType::factory()->create(['capacity' => 20]);
+    OrderItem::factory()->for(Order::factory()->{$state}()->for($ticketType->event))->for($ticketType)->create(['quantity' => 3]);
+
+    expect($ticketType->remaining())->toBe(20)
+        ->and(TicketType::query()->withHeldQuantity()->findOrFail($ticketType->id)->remaining())->toBe(20);
+})->with(['cancelled', 'refunded']);
+
 test('remaining subtracts pending orders only within the hold period', function (int $minutesLater, int $expected) {
     $this->freezeSecond();
     $ticketType = TicketType::factory()->create(['capacity' => 20]);
