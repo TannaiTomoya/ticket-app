@@ -68,16 +68,25 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(Order::class);
     }
 
+    /**
+     * Determine whether the user is an admin.
+     */
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;
     }
 
+    /**
+     * Determine whether the user is an organizer.
+     */
     public function isOrganizer(): bool
     {
         return $this->role === UserRole::Organizer;
     }
 
+    /**
+     * Determine whether the user is a customer.
+     */
     public function isCustomer(): bool
     {
         return $this->role === UserRole::Customer;
