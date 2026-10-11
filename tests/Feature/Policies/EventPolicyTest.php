@@ -7,7 +7,7 @@ use App\Policies\EventPolicy;
 test('published events are visible to everyone', function (Closure $makeUser) {
     $event = Event::factory()->published()->create();
 
-    expect((new EventPolicy)->view($makeUser($event), $event))->toBeTrue();
+    expect((new EventPolicy)->view($makeUser($event), $event)->allowed())->toBeTrue();
 })->with([
     'guest' => [fn (Event $event) => null],
     'customer' => [fn (Event $event) => User::factory()->create()],
@@ -18,7 +18,7 @@ test('published events are visible to everyone', function (Closure $makeUser) {
 test('draft and unpublished events are visible only to the owner and admins', function (Closure $makeEvent, Closure $makeUser, bool $expected) {
     $event = $makeEvent();
 
-    expect((new EventPolicy)->view($makeUser($event), $event))->toBe($expected);
+    expect((new EventPolicy)->view($makeUser($event), $event)->allowed())->toBe($expected);
 })->with([
     'draft' => [fn () => Event::factory()->create()],
     'unpublished' => [fn () => Event::factory()->unpublished()->create()],

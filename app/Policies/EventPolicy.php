@@ -4,19 +4,23 @@ namespace App\Policies;
 
 use App\Models\Event;
 use App\Models\User;
+use Illuminate\Auth\Access\Response;
 
 class EventPolicy
 {
     /**
      * Published events are visible to everyone; others only to the organizer and admins.
+     * Everyone else gets a 404 so that unpublished events stay hidden.
      */
-    public function view(?User $user, Event $event): bool
+    public function view(?User $user, Event $event): Response
     {
         if ($event->isPublished()) {
-            return true;
+            return Response::allow();
         }
 
-        return $user !== null && ($this->owns($user, $event) || $user->isAdmin());
+        return $user !== null && ($this->owns($user, $event) || $user->isAdmin())
+            ? Response::allow()
+            : Response::denyAsNotFound();
     }
 
     /**

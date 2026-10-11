@@ -13,6 +13,9 @@
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                     {{ __('Dashboard') }}
                 </flux:navbar.item>
+                <flux:navbar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
+                    イベント一覧
+                </flux:navbar.item>
                 @can('create', App\Models\Event::class)
                     <flux:navbar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>
                         主催者メニュー
@@ -60,6 +63,9 @@
                 <flux:sidebar.group :heading="__('Platform')">
                     <flux:sidebar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard')  }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
+                        イベント一覧
                     </flux:sidebar.item>
                     @can('create', App\Models\Event::class)
                         <flux:sidebar.item icon="calendar-days" :href="route('organizer.events.index')" :current="request()->routeIs('organizer.events.*')" wire:navigate>

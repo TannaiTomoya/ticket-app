@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Database\Factories\TicketTypeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $sale_ends_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property int|string|null $held_quantity
  */
 #[Fillable(['name', 'price', 'capacity', 'sale_starts_at', 'sale_ends_at'])]
 class TicketType extends Model
@@ -56,6 +59,44 @@ class TicketType extends Model
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    /**
+     * Load the number of seats held by paid and recent pending orders as `held_quantity`.
+     *
+     * @param  Builder<TicketType>  $query
+     */
+    #[Scope]
+    protected function withHeldQuantity(Builder $query): void
+    {
+        $query->withSum([
+            'orderItems as held_quantity' => fn (Builder $query) => $query->whereIn('order_id', Order::query()->holdingSeats()->select('id')),
+        ], 'quantity');
+    }
+
+    /**
+     * Get the number of tickets still available (capacity minus held seats, never below zero).
+     */
+    public function remaining(): int
+    {
+        $held = array_key_exists('held_quantity', $this->attributes)
+            ? (int) $this->held_quantity
+            : (int) $this->orderItems()->whereIn('order_id', Order::query()->holdingSeats()->select('id'))->sum('quantity');
+
+        return max(0, $this->capacity - $held);
+    }
+
+    /**
+     * Get why the ticket type cannot be bought right now, or null when it can.
+     */
+    public function unavailableReason(): ?string
+    {
+        return match (true) {
+            now()->lt($this->sale_starts_at) => '販売前',
+            now()->gt($this->sale_ends_at) => '販売終了',
+            $this->remaining() === 0 => '売り切れ',
+            default => null,
+        };
     }
 
     /**
