@@ -43,6 +43,17 @@ test('owners can add a ticket type to their event', function () {
         ->and($ticketType->sale_ends_at->equalTo($event->starts_at))->toBeTrue();
 });
 
+test('the add form defaults the sale end to the event start', function () {
+    $this->freezeTime();
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($event->organizer)
+        ->test('pages::organizer.events.ticket-types', ['event' => $event])
+        ->call('create')
+        ->assertSet('form.sale_ends_at', $event->starts_at->format('Y-m-d\TH:i'))
+        ->assertSet('form.sale_starts_at', now()->format('Y-m-d\TH:i'));
+});
+
 test('owners can add a free ticket type', function () {
     $event = Event::factory()->create();
 

@@ -10,9 +10,9 @@ class TicketTypeForm extends Form
 {
     public string $name = '';
 
-    public string $price = '';
+    public int|string $price = '';
 
-    public string $capacity = '';
+    public int|string $capacity = '';
 
     public string $sale_starts_at = '';
 
@@ -57,8 +57,8 @@ class TicketTypeForm extends Form
     public function setTicketType(TicketType $ticketType): void
     {
         $this->name = $ticketType->name;
-        $this->price = (string) $ticketType->price;
-        $this->capacity = (string) $ticketType->capacity;
+        $this->price = $ticketType->price;
+        $this->capacity = $ticketType->capacity;
         $this->sale_starts_at = $ticketType->sale_starts_at->format('Y-m-d\TH:i');
         $this->sale_ends_at = $ticketType->sale_ends_at->format('Y-m-d\TH:i');
     }

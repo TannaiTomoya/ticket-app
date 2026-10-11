@@ -41,11 +41,13 @@ new class extends Component {
      */
     public function create(): void
     {
-        $this->authorize('create', [TicketType::class, $this->event]);
+        $this->authorize('update', $this->event);
 
         $this->editingId = null;
         $this->form->reset();
         $this->form->resetErrorBag();
+        $this->form->sale_starts_at = now()->format('Y-m-d\TH:i');
+        $this->form->sale_ends_at = $this->event->starts_at->format('Y-m-d\TH:i');
 
         Flux::modal('ticket-type-form')->show();
     }
@@ -55,9 +57,9 @@ new class extends Component {
      */
     public function edit(int $id): void
     {
-        $ticketType = $this->findTicketType($id);
+        $this->authorize('update', $this->event);
 
-        $this->authorize('update', $ticketType);
+        $ticketType = $this->findTicketType($id);
 
         $this->editingId = $ticketType->id;
         $this->form->setTicketType($ticketType);
@@ -71,18 +73,14 @@ new class extends Component {
      */
     public function save(): void
     {
-        if ($this->editingId === null) {
-            $this->authorize('create', [TicketType::class, $this->event]);
+        $this->authorize('update', $this->event);
 
+        if ($this->editingId === null) {
             $this->event->ticketTypes()->create($this->validatedInput());
 
             Flux::toast(variant: 'success', text: '券種を追加しました。');
         } else {
-            $ticketType = $this->findTicketType($this->editingId);
-
-            $this->authorize('update', $ticketType);
-
-            $ticketType->update($this->validatedInput());
+            $this->findTicketType($this->editingId)->update($this->validatedInput());
 
             Flux::toast(variant: 'success', text: '券種を保存しました。');
         }
@@ -99,6 +97,8 @@ new class extends Component {
      */
     public function delete(int $id): void
     {
+        $this->authorize('update', $this->event);
+
         $ticketType = $this->findTicketType($id);
 
         $this->authorize('delete', $ticketType);

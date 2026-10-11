@@ -59,6 +59,14 @@ class TicketType extends Model
     }
 
     /**
+     * Determine whether the ticket type is within its sale period now.
+     */
+    public function isOnSale(): bool
+    {
+        return now()->between($this->sale_starts_at, $this->sale_ends_at);
+    }
+
+    /**
      * Determine whether the ticket type can be deleted (it has never been ordered).
      */
     public function isDeletable(): bool
