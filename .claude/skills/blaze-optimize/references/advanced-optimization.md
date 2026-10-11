@@ -1,3 +1,20 @@
+```
+erDiagram
+    users ||--o{ events : "主催する (organizer_id)"
+    users ||--o{ orders : "注文する (user_id)"
+    events ||--o{ ticket_types : "持つ"
+    events ||--o{ orders : "対象"
+    orders ||--|{ order_items : "含む"
+    ticket_types ||--o{ order_items : "購入される"
+    order_items ||--o{ tickets : "発行"
+
+    users {
+        bigint id PK
+        string name
+        string email UK
+        string password
+        string role "customer/organizer/admin"
+    }
 # Advanced Optimization
 
 These optimizations (memoization and folding) are more powerful but carry risk — they can affect component behavior if applied incorrectly and should be thoroughly tested.

@@ -24,14 +24,17 @@ yarn-error.log
 /.zed
 /.agents
 /.amp
+# /.claude
 /.cursor
 /.factory
 /.grok
 /.junie
 /.kiro
 /.pi
-/.mcp.json
-/boost.json
+# /.mcp.json
+# /AGENTS.md
+# /CLAUDE.md
+# /boost.json
 /opencode.json
 /opencode.jsonc
 /.claude/settings.local.json
