@@ -54,6 +54,20 @@
                 viewable
             />
 
+            <!-- Role -->
+            <flux:radio.group name="role" :label="__('Account type')">
+                <flux:radio
+                    value="{{ \App\Enums\UserRole::Customer->value }}"
+                    :label="\App\Enums\UserRole::Customer->label()"
+                    :checked="old('role', \App\Enums\UserRole::Customer->value) === \App\Enums\UserRole::Customer->value"
+                />
+                <flux:radio
+                    value="{{ \App\Enums\UserRole::Organizer->value }}"
+                    :label="\App\Enums\UserRole::Organizer->label().'として登録'"
+                    :checked="old('role') === \App\Enums\UserRole::Organizer->value"
+                />
+            </flux:radio.group>
+
             <div class="flex items-center justify-end">
                 <flux:button type="submit" variant="primary" class="w-full" data-test="register-user-button">
                     {{ __('Create account') }}

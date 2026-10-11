@@ -7,10 +7,13 @@ test('guests are redirected to the login page', function () {
     $response->assertRedirect(route('login'));
 });
 
-test('authenticated users can visit the dashboard', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
+test('authenticated users are redirected by role', function (Closure $makeUser, string $expectedPath) {
+    $this->actingAs($makeUser());
 
     $response = $this->get(route('dashboard'));
-    $response->assertOk();
-});
+    $response->assertRedirect($expectedPath);
+})->with([
+    'admin' => [fn () => User::factory()->admin()->create(), '/admin/events'],
+    'organizer' => [fn () => User::factory()->organizer()->create(), '/organizer/events'],
+    'customer' => [fn () => User::factory()->create(), '/orders'],
+]);
