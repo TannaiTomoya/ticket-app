@@ -116,6 +116,10 @@ test('signed in users see the menu items for their role', function (Closure $mak
     'admin' => [fn () => User::factory()->admin()->create(), false, true],
 ]);
 
+test('the events path redirects to the event list', function () {
+    $this->get('/events')->assertRedirect(route('home'))->assertStatus(301);
+});
+
 test('event cards show an image placeholder', function () {
     Event::factory()->published()->create();
 

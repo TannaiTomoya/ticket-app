@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::livewire('/', 'pages::events.index')->name('home');
+Route::permanentRedirect('events', '/');
 Route::livewire('events/{event}', 'pages::events.show')->name('events.show');
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -14,6 +15,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         UserRole::Customer => '/orders',
     }))->name('dashboard');
 });
+
+Route::redirect('organizer', 'organizer/events');
 
 Route::middleware(['auth', 'verified', 'role:organizer'])
     ->prefix('organizer/events')

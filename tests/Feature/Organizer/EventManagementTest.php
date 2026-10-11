@@ -13,6 +13,12 @@ test('guests are redirected to the login page', function () {
     $response->assertRedirect(route('login'));
 });
 
+test('the organizer path redirects to the organizer menu', function () {
+    $this->actingAs(User::factory()->organizer()->create())
+        ->get('/organizer')
+        ->assertRedirect(route('organizer.events.index'));
+});
+
 test('customers are forbidden from organizer event pages', function (string $routeName) {
     $this->actingAs(User::factory()->create());
 
