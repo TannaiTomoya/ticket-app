@@ -44,6 +44,12 @@ new #[Title('イベントの編集')] class extends Component {
 
         abort_if($this->event->status === EventStatus::Unpublished, 403, '管理者により非公開にされたイベントは公開できません。');
 
+        if (! $this->event->isPublished() && $this->event->ticketTypes()->doesntExist()) {
+            Flux::toast(variant: 'danger', text: '公開するには券種を1つ以上追加してください。');
+
+            return;
+        }
+
         $this->event->status = $this->event->isPublished() ? EventStatus::Draft : EventStatus::Published;
         $this->event->save();
 
@@ -91,6 +97,10 @@ new #[Title('イベントの編集')] class extends Component {
             <flux:link :href="route('organizer.events.index')" wire:navigate>一覧に戻る</flux:link>
         </div>
     </form>
+
+    <flux:separator />
+
+    <livewire:pages::organizer.events.ticket-types :event="$event" />
 
     <flux:separator />
 

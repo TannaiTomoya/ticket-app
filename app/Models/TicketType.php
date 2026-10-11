@@ -57,4 +57,12 @@ class TicketType extends Model
     {
         return $this->hasMany(OrderItem::class);
     }
+
+    /**
+     * Determine whether the ticket type can be deleted (it has never been ordered).
+     */
+    public function isDeletable(): bool
+    {
+        return $this->orderItems()->doesntExist();
+    }
 }

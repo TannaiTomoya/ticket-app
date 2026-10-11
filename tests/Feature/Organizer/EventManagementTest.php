@@ -3,6 +3,7 @@
 use App\Enums\EventStatus;
 use App\Models\Event;
 use App\Models\Order;
+use App\Models\TicketType;
 use App\Models\User;
 use Livewire\Livewire;
 
@@ -140,7 +141,7 @@ test('other organizers cannot change the event through component actions', funct
 })->with(['save', 'togglePublish', 'deleteEvent']);
 
 test('owners can toggle an event between draft and published', function () {
-    $event = Event::factory()->create();
+    $event = Event::factory()->has(TicketType::factory())->create();
 
     $component = Livewire::actingAs($event->organizer)
         ->test('pages::organizer.events.edit', ['event' => $event]);
@@ -149,6 +150,16 @@ test('owners can toggle an event between draft and published', function () {
     expect($event->fresh()->status)->toBe(EventStatus::Published);
 
     $component->call('togglePublish');
+    expect($event->fresh()->status)->toBe(EventStatus::Draft);
+});
+
+test('owners cannot publish an event without ticket types', function () {
+    $event = Event::factory()->create();
+
+    Livewire::actingAs($event->organizer)
+        ->test('pages::organizer.events.edit', ['event' => $event])
+        ->call('togglePublish');
+
     expect($event->fresh()->status)->toBe(EventStatus::Draft);
 });
 
