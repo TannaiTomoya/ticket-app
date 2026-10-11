@@ -2,6 +2,7 @@
 
 use App\Models\Event;
 use App\Models\TicketType;
+use App\Services\OrderService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
@@ -10,6 +11,13 @@ use Livewire\Component;
 
 new #[Layout('layouts::public')] class extends Component {
     public Event $event;
+
+    /**
+     * The selected quantity per ticket type (ticket type id => quantity).
+     *
+     * @var array<int, int|string>
+     */
+    public array $quantities = [];
 
     /**
      * Mount the component. Unpublished events are a 404 for everyone but the organizer and admins.
@@ -30,6 +38,47 @@ new #[Layout('layouts::public')] class extends Component {
     public function ticketTypes(): Collection
     {
         return $this->event->ticketTypes()->withHeldQuantity()->orderBy('price')->orderBy('id')->get();
+    }
+
+    /**
+     * Get the largest quantity that can be selected for the ticket type.
+     */
+    public function maxSelectable(TicketType $ticketType): int
+    {
+        return min(OrderService::MAX_QUANTITY, $ticketType->remaining());
+    }
+
+    /**
+     * Keep the selected quantities in the session and go to the purchase confirmation.
+     * Guests are sent to the login page and come back to the confirmation afterwards.
+     */
+    public function proceed(): void
+    {
+        $this->authorize('view', $this->event);
+
+        $selected = $this->ticketTypes
+            ->filter(fn (TicketType $ticketType): bool => $ticketType->unavailableReason() === null)
+            ->mapWithKeys(fn (TicketType $ticketType): array => [$ticketType->id => (int) ($this->quantities[$ticketType->id] ?? 0)])
+            ->filter(fn (int $quantity): bool => $quantity > 0)
+            ->all();
+
+        if ($selected === []) {
+            $this->addError('purchase', '枚数を選んでください。');
+
+            return;
+        }
+
+        session()->put("purchase.{$this->event->id}", $selected);
+
+        if (auth()->guest()) {
+            session()->put('url.intended', route('events.purchase', $this->event));
+
+            $this->redirectRoute('login');
+
+            return;
+        }
+
+        $this->redirectRoute('events.purchase', $this->event, navigate: true);
     }
 
     /**
@@ -69,6 +118,12 @@ new #[Layout('layouts::public')] class extends Component {
     <div class="space-y-3">
         <flux:heading size="lg">チケット</flux:heading>
 
+        @php($isPurchasable = $event->isPublished() && ! $event->isFinished())
+
+        @error('purchase')
+            <flux:callout icon="exclamation-triangle" color="red" :heading="$message" />
+        @enderror
+
         @if ($this->ticketTypes->isEmpty())
             <flux:text>券種がまだありません。</flux:text>
         @else
@@ -79,6 +134,9 @@ new #[Layout('layouts::public')] class extends Component {
                     <flux:table.column align="end">残り</flux:table.column>
                     <flux:table.column>販売期間</flux:table.column>
                     <flux:table.column></flux:table.column>
+                    @if ($isPurchasable)
+                        <flux:table.column align="end">枚数</flux:table.column>
+                    @endif
                 </flux:table.columns>
 
                 <flux:table.rows>
@@ -97,10 +155,30 @@ new #[Layout('layouts::public')] class extends Component {
                                     <flux:badge size="sm" color="green">販売中</flux:badge>
                                 @endif
                             </flux:table.cell>
+                            @if ($isPurchasable)
+                                <flux:table.cell align="end">
+                                    @if ($ticketType->unavailableReason() === null)
+                                        <flux:select wire:model="quantities.{{ $ticketType->id }}" size="sm" class="w-20" aria-label="{{ $ticketType->name }}の枚数" data-test="quantity-select-{{ $ticketType->id }}">
+                                            @foreach (range(0, $this->maxSelectable($ticketType)) as $quantity)
+                                                <flux:select.option :value="$quantity">{{ $quantity }}</flux:select.option>
+                                            @endforeach
+                                        </flux:select>
+                                    @endif
+                                </flux:table.cell>
+                            @endif
                         </flux:table.row>
                     @endforeach
                 </flux:table.rows>
             </flux:table>
+
+            @if ($isPurchasable && $this->ticketTypes->contains(fn ($ticketType) => $ticketType->unavailableReason() === null))
+                <div class="flex flex-wrap items-center justify-end gap-4">
+                    @guest
+                        <flux:text>ログインすると購入手続きに進めます。</flux:text>
+                    @endguest
+                    <flux:button variant="primary" wire:click="proceed" data-test="proceed-to-purchase-button">購入手続きへ進む</flux:button>
+                </div>
+            @endif
         @endif
     </div>
 </section>
