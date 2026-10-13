@@ -162,7 +162,7 @@ T5（支払い済みの注文があるイベントは削除できない）は、
 - `order_items.ticket_type_id` が対象の券種
 - 注文（orders）が次のどちらか
   - `status = paid`
-  - `status = pending` かつ `created_at` が 15 分以内（支払い中の枠を確保しておく）
+  - `status = pending` かつ `created_at` が 35 分以内（支払い中の枠を確保しておく）
 
 SQL のイメージ：
 
@@ -174,7 +174,7 @@ LEFT JOIN order_items oi ON oi.ticket_type_id = tt.id
     SELECT 1 FROM orders o
     WHERE o.id = oi.order_id
       AND (o.status = 'paid'
-           OR (o.status = 'pending' AND o.created_at >= NOW() - INTERVAL 15 MINUTE))
+           OR (o.status = 'pending' AND o.created_at >= NOW() - INTERVAL 35 MINUTE))
   )
 WHERE tt.id = ?
 GROUP BY tt.id, tt.capacity;
@@ -184,20 +184,20 @@ GROUP BY tt.id, tt.capacity;
 
 同じ事実を2か所に持つと、片方だけ更新されたときにずれるため。
 
-- 15 分経った pending は、DB に何も起きないまま枠を手放す（カラムを更新する契機がない）
+- 35 分経った pending は、DB に何も起きないまま枠を手放す（カラムを更新する契機がない）
 - 購入・支払い確定・定員変更・注文削除・返金（E3）のどれかで更新を忘れるとずれる
 - 途中で失敗すると片方だけ反映される
 
 ### 注意点
 
 - 計算にしても、同時購入で定員を超えて売れる問題は残る。購入時はトランザクション内で券種の行をロック（`lockForUpdate`）してから残り枚数を計算する（拡張 E2）
-- 15 分の値は定数 `Order::HOLD_MINUTES` にまとめ、「枠を押さえている注文」の条件はスコープ `Order::holdingSeats()` に置く
-- Stripe Checkout Session の有効期限（`expires_at`）は最短 30 分。15 分を過ぎて枠を手放した注文が、そのあと支払われる可能性がある。枠の確保時間を 30 分にそろえるか、Webhook で支払いを確定するときに残り枚数を再確認するかを、決済の実装（C10, C11）で決める
+- 35 分の値は定数 `Order::HOLD_MINUTES` にまとめ、「枠を押さえている注文」の条件はスコープ `Order::holdingSeats()` に置く
+- Stripe Checkout Session の有効期限（`expires_at`）は 30 分（`CheckoutService::EXPIRES_MINUTES`）。枠を押さえる時間（35 分）をそれより長くして、枠を手放したあとに支払われないようにしている
 - 実装は `TicketType::remaining()` と、一覧用に `withSum` で集計するスコープ `TicketType::withHeldQuantity()`
 
 ## 設計判断
 
-- **残り枚数は保存しない**：詳細は「残り枚数の計算方法」を参照。初期データにある「15 分以上前の pending」はこの前提。
+- **残り枚数は保存しない**：詳細は「残り枚数の計算方法」を参照。初期データにある「35 分以上前の pending」はこの前提。
 - **金額は円の整数**（unsigned int）：Stripe の JPY に小数がないため。
 - **status は string ＋ PHP Enum**：MySQL の enum 型は値を増やすときに変更が面倒なので避ける（`cancelled` と `refunded` もマイグレーションなしで足せた）。
 - **このあと拡張で足すカラム**：画像の `events.image_path`（E14）と、受付済みかどうかの `tickets.checked_in_at`（E1）。コアには入れていない。

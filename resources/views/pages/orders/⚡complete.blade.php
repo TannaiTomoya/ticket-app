@@ -22,7 +22,7 @@ new #[Layout('layouts::public'), Title('注文を受け付けました')] class 
 <section class="w-full max-w-3xl space-y-8">
     <div class="space-y-2">
         <flux:heading size="xl" level="1">注文を受け付けました</flux:heading>
-        <flux:text>支払いは平日課題で実装します。この注文は「{{ $order->status->label() }}」のまま、作成から15分間だけ枠を押さえます。</flux:text>
+        <flux:text>この注文は「{{ $order->status->label() }}」です。支払いの確認が済むと、チケットが発行されます。</flux:text>
     </div>
 
     <div class="space-y-1">

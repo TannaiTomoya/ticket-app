@@ -31,7 +31,7 @@
 - イベントの持ち主は `events.organizer_id`（`organizer()` / `organizedEvents()`）、注文した人は `orders.user_id`
 - 状態は Enum（`app/Enums/`）で持つ。`events.status` は draft / published / unpublished、`orders.status` は pending / paid / cancelled / refunded。表示用に `label()` と `color()` がある
 - 金額はすべて円の整数。明細の `unit_price` には買った時点の価格を残し、あとで券種の価格を見に行かない
-- 残り枚数は保存せず、その都度「定員 −（支払い済み ＋ 作成から15分以内の支払い待ち）」で出す。条件は `Order::holdingSeats()`（15分は `Order::HOLD_MINUTES`）、計算は `TicketType::remaining()` / `withHeldQuantity()`。購入ではトランザクションの中で券種の行を `lockForUpdate` してから数える
+- 残り枚数は保存せず、その都度「定員 −（支払い済み ＋ 作成から35分以内の支払い待ち）」で出す。条件は `Order::holdingSeats()`（35分は `Order::HOLD_MINUTES`）、計算は `TicketType::remaining()` / `withHeldQuantity()`。購入ではトランザクションの中で券種の行を `lockForUpdate` してから数える
 - チケットの `code` は作成時に自動で付く ULID
 - 注文が付いたイベント・券種・ユーザーは消せない（外部キーは restrict）。券種・明細・チケットは親を消すと一緒に消える（cascade）
 - テストのデータはファクトリの state で作る（`organizer()`、`published()`、`past()`、`saleEnded()`、`paid()`、`cancelled()` など）
@@ -48,6 +48,7 @@
 ### 済み
 - 6テーブルのモデル・マイグレーション・ファクトリと Enum、日本語の言語ファイル（laravel-lang）、CI（MySQL 8.4）
 - 工程1〜4: ロールと `role` ミドルウェア、主催者のイベント管理と公開の切り替え（`EventPolicy`、`events.ends_at` を追加）、券種の管理（編集画面に埋め込んだ `⚡ticket-types`）、公開側の一覧・詳細と残り枚数、ロールごとのナビ。タイムゾーンは Asia/Tokyo
+- 工程7: Stripe Checkout（C10）。`CheckoutService`（createSession / retrieveSession / expireSession）、購入確認から決済ページへ、中断 `/orders/{order}/cancel`（`OrderPolicy::cancel`、`OrderService::cancelCheckout`）
 - 工程5: 購入の注文作成（C8, C9）。詳細で券種ごとに枚数を選ぶ → 購入確認 `/events/{event}/purchase` → `App\Services\OrderService::createOrder`（`lockForUpdate`、単価は DB から）→ 完了 `/orders/{order}/complete`（`OrderPolicy::view`。工程7で Stripe へ差し替える） → T6〜T8
 
 ### 決めたこと
@@ -61,15 +62,17 @@
 - 1回に買えるのは券種ごとに1〜10枚（`OrderService::MAX_QUANTITY`）。「終わったイベント」は `Event::isFinished()`（`ends_at` が過去）で判定し、下書き・非公開・終了済みは買えない
 - 買えない理由は `PurchaseException` で投げ、画面で `addError('purchase')` → `flux:callout` で出す。`Order` / `OrderItem` は `$fillable` を持たず、プロパティに直接入れて保存する
 - `OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す
+- 決済ページの期限は30分（`CheckoutService::EXPIRES_MINUTES`）、枠を押さえるのは35分（`Order::HOLD_MINUTES`）。押さえる時間を必ず長くし、枠を手放したあとに支払われないようにする
+- 支払い方法はカードだけ（`payment_method_types = card`）。Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
+- 決済は章ごとに PR を作る
 
 ### 段階1（残り）
 6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す
 
 ### 段階2（決済とメール。`feature/payments` ブランチで進める。詳細は [決済とメールの流れ](doc/spec/04_flows_tests_seed.md)）
-7. Stripe Checkout（C10）: `CheckoutService`（createSession / retrieveSession / expireSession）。中断したら Session を失効させてから cancelled にする
 8. 支払いの通知と完了ページ（C11, C13）: `OrderService::markAsPaid` は `WHERE status = pending` を付けた UPDATE で確定する。0円の注文もここを通す。`orders.stripe_payment_intent_id` を追加 → T9〜T11
 9. 購入完了メールとマイページ（C12, C14）: メールは `markAsPaid` が true を返したときだけ送る。`OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す → T12
-10. 売上画面と仕上げ（C16）: `/organizer/events/{event}/orders` は `role:organizer,admin`。定員を下げられるのは「支払い済み ＋ 15分以内の支払い待ち」まで。イベントの開始日時を券種の販売終了より前にさせない。最後に security-audit で点検する
+10. 売上画面と仕上げ（C16）: `/organizer/events/{event}/orders` は `role:organizer,admin`。定員を下げられるのは「支払い済み ＋ 35分以内の支払い待ち」まで。イベントの開始日時を券種の販売終了より前にさせない。最後に security-audit で点検する
 11. シーダー: [決済とメールの流れ](doc/spec/04_flows_tests_seed.md) の「初期データ」に合わせる（パスワードは全員 `password`）
 
 ### 公開

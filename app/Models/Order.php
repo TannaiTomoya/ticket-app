@@ -32,7 +32,7 @@ class Order extends Model
     /**
      * How long (in minutes) a pending order keeps its seats reserved.
      */
-    public const HOLD_MINUTES = 15;
+    public const HOLD_MINUTES = 35;
 
     /**
      * Get the attributes that should be cast.

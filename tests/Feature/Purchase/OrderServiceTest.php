@@ -15,7 +15,7 @@ test('creates a pending order with items whose unit price and total are correct'
     $ticketTypeB = TicketType::factory()->for($event)->create(['price' => 1000, 'capacity' => 10]);
     $user = User::factory()->create();
 
-    $order = (new OrderService)->createOrder($user, $event, [
+    $order = app(OrderService::class)->createOrder($user, $event, [
         $ticketTypeA->id => 2,
         $ticketTypeB->id => 3,
     ]);
@@ -40,7 +40,7 @@ test('fails when the requested quantity exceeds the remaining seats', function (
     $ticketType = TicketType::factory()->for($event)->create(['capacity' => 2]);
     $user = User::factory()->create();
 
-    expect(fn () => (new OrderService)->createOrder($user, $event, [$ticketType->id => 3]))
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 3]))
         ->toThrow(PurchaseException::class);
 
     expect(Order::count())->toBe(0);
@@ -51,7 +51,7 @@ test('fails when the ticket type is outside its sale period', function () {
     $ticketType = TicketType::factory()->for($event)->saleEnded()->create();
     $user = User::factory()->create();
 
-    expect(fn () => (new OrderService)->createOrder($user, $event, [$ticketType->id => 1]))
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 1]))
         ->toThrow(PurchaseException::class);
 
     expect(Order::count())->toBe(0);
@@ -62,7 +62,7 @@ test('fails when the quantity exceeds the maximum per ticket type', function () 
     $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
     $user = User::factory()->create();
 
-    expect(fn () => (new OrderService)->createOrder($user, $event, [$ticketType->id => 11]))
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 11]))
         ->toThrow(PurchaseException::class);
 
     expect(Order::count())->toBe(0);
@@ -72,7 +72,7 @@ test('fails when no quantity is selected', function () {
     $event = Event::factory()->published()->create();
     $ticketType = TicketType::factory()->for($event)->create();
 
-    expect(fn () => (new OrderService)->createOrder(User::factory()->create(), $event, [$ticketType->id => 0]))
+    expect(fn () => app(OrderService::class)->createOrder(User::factory()->create(), $event, [$ticketType->id => 0]))
         ->toThrow(PurchaseException::class, '枚数を選んでください。');
 
     expect(Order::count())->toBe(0);
@@ -82,7 +82,7 @@ test('fails when the event cannot be purchased', function (Closure $makeEvent) {
     $event = $makeEvent();
     $ticketType = TicketType::factory()->for($event)->create();
 
-    expect(fn () => (new OrderService)->createOrder(User::factory()->create(), $event, [$ticketType->id => 1]))
+    expect(fn () => app(OrderService::class)->createOrder(User::factory()->create(), $event, [$ticketType->id => 1]))
         ->toThrow(PurchaseException::class, 'このイベントは現在購入できません。');
 
     expect(Order::count())->toBe(0);
@@ -96,7 +96,7 @@ test('fails when the ticket type belongs to another event', function () {
     $event = Event::factory()->published()->create();
     $otherTicketType = TicketType::factory()->for(Event::factory()->published())->create();
 
-    expect(fn () => (new OrderService)->createOrder(User::factory()->create(), $event, [$otherTicketType->id => 1]))
+    expect(fn () => app(OrderService::class)->createOrder(User::factory()->create(), $event, [$otherTicketType->id => 1]))
         ->toThrow(PurchaseException::class);
 
     expect(Order::count())->toBe(0);
@@ -117,7 +117,7 @@ test('rolls back the order and its already-saved items when a later item fails t
         }
     });
 
-    expect(fn () => (new OrderService)->createOrder($user, $event, [
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [
         $ticketTypeA->id => 1,
         $ticketTypeB->id => 1,
     ]))->toThrow(RuntimeException::class);

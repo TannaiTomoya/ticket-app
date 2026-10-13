@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
+use App\Services\CheckoutService;
 use Livewire\Livewire;
 
 test('only ticket types on sale get a quantity select', function () {
@@ -104,19 +105,25 @@ test('opening the confirmation without a selection goes back to the event', func
         ->assertRedirect(route('events.show', $event));
 });
 
-test('paying creates a pending order and opens the complete page', function () {
+test('paying creates a pending order and sends the buyer to the Stripe payment page', function () {
     $event = Event::factory()->published()->create();
     $ticketType = TicketType::factory()->for($event)->create(['price' => 3000]);
     $user = User::factory()->create();
     session()->put("purchase.{$event->id}", [$ticketType->id => 2]);
 
-    $component = Livewire::actingAs($user)
+    $this->mock(CheckoutService::class)
+        ->shouldReceive('createSession')
+        ->once()
+        ->withArgs(fn (Order $order): bool => $order->total_amount === 6000)
+        ->andReturn('https://checkout.stripe.com/c/pay/cs_test_123');
+
+    Livewire::actingAs($user)
         ->test('pages::events.purchase', ['event' => $event])
         ->call('pay')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertRedirect('https://checkout.stripe.com/c/pay/cs_test_123');
 
     $order = Order::sole();
-    $component->assertRedirect(route('orders.complete', $order));
 
     expect($order->user_id)->toBe($user->id)
         ->and($order->status)->toBe(OrderStatus::Pending)
