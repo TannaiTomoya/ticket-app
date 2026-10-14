@@ -70,7 +70,8 @@
 - 決済ページの期限は30分（`CheckoutService::EXPIRES_MINUTES`）、枠を押さえるのは35分（`Order::HOLD_MINUTES`）。押さえる時間を必ず長くし、枠を手放したあとに支払われないようにする
 - 支払い方法は `allowed_payment_method_types` でカードだけに絞る（コンビニ払いのような、あとで入金が決まる方法は確定の処理が対応していないため）
 - Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
-- 決済は章ごとに PR を作る
+- 課題は main に向けた PR で提出し、レビューで OK をもらってからマージする（手順はスキル `camp-submission-ja`）。OK の前に main へマージしない
+- 決済の章のように複数の章を出すときは、1つのブランチに章ごとのコミットを積んで、PR を1つにする
 - Webhook が 400 を返すのは署名が合わないときだけ。ほかは 2xx を返す（再送させない）。署名の確認は `CheckoutService::constructEvent`
 - 確定の前に `confirmCheckout` で Session の ID が注文のものか、`payment_status` が paid かを確かめる
 - 0円の注文も `markAsPaid` を通す（チケットの発行を1か所にまとめる）
