@@ -117,3 +117,18 @@ test('a mail failure does not undo the payment', function () {
         ->and($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and($order->tickets()->count())->toBe(2);
 });
+
+test('markdown in the venue and ticket type names is not turned into a link or an image', function () {
+    $order = mailOrder();
+    $order->event->update(['venue' => '[受付はこちら](https://evil.test/login)']);
+    $order->items->sole()->ticketType->update(['name' => '![x](https://evil.test/a.png)']);
+
+    $html = (new OrderPaidMail($order->fresh(['user', 'event', 'items.ticketType'])))->render();
+
+    expect($html)->toContain('受付はこちら')
+        ->not->toContain('href="https://evil.test')
+        ->not->toContain('src="https://evil.test')
+        ->toContain('<table')
+        ->toMatch('/<strong[^>]*>合計<\/strong>/u')
+        ->toContain('href="'.route('orders.show', $order).'"');
+});

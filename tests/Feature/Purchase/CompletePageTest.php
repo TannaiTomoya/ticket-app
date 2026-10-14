@@ -23,14 +23,16 @@ function completePageOrder(int $quantity = 2): Order
 }
 
 /**
- * Build a Checkout Session as Stripe would return it.
+ * Build a Checkout Session as Stripe would return it. The default amount is the OrderFactory total.
  */
-function stripeSession(string $paymentStatus): Session
+function stripeSession(string $paymentStatus, int $amountTotal = 3000): Session
 {
     return Session::constructFrom([
         'id' => 'cs_test_123',
         'payment_status' => $paymentStatus,
         'payment_intent' => 'pi_test_123',
+        'amount_total' => $amountTotal,
+        'currency' => 'jpy',
     ]);
 }
 
@@ -135,4 +137,19 @@ test('a Stripe error on the complete page keeps the order pending', function () 
         ->assertSee('支払いを確認しています');
 
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+test('a paid session with a different amount keeps the order pending', function () {
+    $order = completePageOrder();
+
+    $this->mock(CheckoutService::class)
+        ->shouldReceive('retrieveSession')->andReturn(stripeSession('paid', amountTotal: 100));
+
+    $this->actingAs($order->user)
+        ->get(route('orders.complete', ['order' => $order, 'session_id' => 'cs_test_123']))
+        ->assertOk()
+        ->assertSee('支払いを確認しています');
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and($order->tickets()->count())->toBe(0);
 });

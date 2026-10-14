@@ -30,7 +30,7 @@ new #[Title('イベントの編集')] class extends Component {
     {
         $this->authorize('update', $this->event);
 
-        $this->event->update($this->form->validate());
+        $this->event->update($this->form->validate($this->form->rulesFor($this->event), $this->form->messagesFor($this->event)));
 
         Flux::toast(variant: 'success', text: 'イベントを保存しました。');
     }
@@ -80,13 +80,17 @@ new #[Title('イベントの編集')] class extends Component {
             </div>
         </div>
 
-        @if ($event->status !== \App\Enums\EventStatus::Unpublished)
-            <flux:button wire:click="togglePublish" :variant="$event->isPublished() ? 'filled' : 'primary'" data-test="toggle-publish-button">
-                {{ $event->isPublished() ? '下書きに戻す' : '公開する' }}
-            </flux:button>
-        @else
-            <flux:text>管理者により非公開にされています。</flux:text>
-        @endif
+        <div class="flex flex-wrap items-center gap-2">
+            <flux:button icon="chart-bar" :href="route('organizer.events.orders', $event)" wire:navigate data-test="sales-link">売上を見る</flux:button>
+
+            @if ($event->status !== \App\Enums\EventStatus::Unpublished)
+                <flux:button wire:click="togglePublish" :variant="$event->isPublished() ? 'filled' : 'primary'" data-test="toggle-publish-button">
+                    {{ $event->isPublished() ? '下書きに戻す' : '公開する' }}
+                </flux:button>
+            @else
+                <flux:text>管理者により非公開にされています。</flux:text>
+            @endif
+        </div>
     </div>
 
     <form wire:submit="save" class="space-y-6">
