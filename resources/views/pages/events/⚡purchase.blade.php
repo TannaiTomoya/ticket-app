@@ -86,6 +86,7 @@ new #[Layout('layouts::public'), Title('購入確認')] class extends Component 
         session()->forget($this->selectionKey());
 
         if ($order->total_amount === 0) {
+            $orders->markAsPaid($order);
             $this->redirectRoute('orders.complete', $order, navigate: true);
 
             return;

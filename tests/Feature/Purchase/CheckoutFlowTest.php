@@ -23,7 +23,7 @@ function pendingCheckoutOrder(int $capacity = 5, int $quantity = 2): Order
     return $order;
 }
 
-test('a free order skips Stripe and opens the complete page', function () {
+test('a free order skips Stripe, is paid at once and opens the complete page', function () {
     $event = Event::factory()->published()->create();
     $ticketType = TicketType::factory()->for($event)->create(['price' => 0]);
     session()->put("purchase.{$event->id}", [$ticketType->id => 1]);
@@ -38,8 +38,9 @@ test('a free order skips Stripe and opens the complete page', function () {
     $order = Order::sole();
     $component->assertRedirect(route('orders.complete', $order));
 
-    expect($order->status)->toBe(OrderStatus::Pending)
-        ->and($order->total_amount)->toBe(0);
+    expect($order->status)->toBe(OrderStatus::Paid)
+        ->and($order->total_amount)->toBe(0)
+        ->and($order->tickets()->count())->toBe(1);
 });
 
 test('a Stripe error cancels the new order and shows an error', function () {
@@ -90,7 +91,7 @@ test('a completed session is not cancelled and goes to the complete page', funct
 
     $this->actingAs($order->user)
         ->get(route('orders.cancel', $order))
-        ->assertRedirect(route('orders.complete', $order));
+        ->assertRedirect(route('orders.complete', ['order' => $order, 'session_id' => 'cs_test_123']));
 
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
 });
@@ -113,7 +114,7 @@ test('a paid order is not cancelled', function () {
 
     $this->actingAs($order->user)
         ->get(route('orders.cancel', $order))
-        ->assertRedirect(route('orders.complete', $order));
+        ->assertRedirect(route('orders.complete', ['order' => $order, 'session_id' => $order->stripe_checkout_session_id]));
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid);
 });

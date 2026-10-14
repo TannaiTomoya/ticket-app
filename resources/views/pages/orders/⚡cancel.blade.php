@@ -26,7 +26,7 @@ new #[Layout('layouts::public'), Title('支払いを中断しました')] class 
         }
 
         if ($order->status !== OrderStatus::Cancelled) {
-            $this->redirectRoute('orders.complete', $order, navigate: true);
+            $this->redirectRoute('orders.complete', ['order' => $order, 'session_id' => $order->stripe_checkout_session_id], navigate: true);
 
             return;
         }

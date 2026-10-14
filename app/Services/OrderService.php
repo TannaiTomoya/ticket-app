@@ -96,6 +96,52 @@ class OrderService
     }
 
     /**
+     * Mark the order as paid and issue one ticket per purchased seat.
+     * Only a pending order is updated, so concurrent calls confirm it once.
+     */
+    public function markAsPaid(Order $order, ?string $paymentIntentId = null): bool
+    {
+        $paid = DB::transaction(function () use ($order, $paymentIntentId): bool {
+            $affected = Order::query()
+                ->whereKey($order->id)
+                ->where('status', OrderStatus::Pending)
+                ->update([
+                    'status' => OrderStatus::Paid,
+                    'stripe_payment_intent_id' => $paymentIntentId,
+                    'paid_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            if ($affected === 0) {
+                return false;
+            }
+
+            $order->items()->get()->each(
+                fn (OrderItem $item) => $item->tickets()->createMany(array_fill(0, $item->quantity, [])),
+            );
+
+            return true;
+        });
+
+        $order->refresh();
+
+        return $paid;
+    }
+
+    /**
+     * Mark the order as paid when the Checkout Session belongs to it and has been paid.
+     */
+    public function confirmCheckout(Order $order, Session $session): bool
+    {
+        if ($session->id !== $order->stripe_checkout_session_id
+            || $session->payment_status !== Session::PAYMENT_STATUS_PAID) {
+            return false;
+        }
+
+        return $this->markAsPaid($order, is_string($session->payment_intent) ? $session->payment_intent : null);
+    }
+
+    /**
      * Cancel the order if it is still pending. Its seats are released because cancelled orders hold none.
      */
     public function cancel(Order $order): bool
