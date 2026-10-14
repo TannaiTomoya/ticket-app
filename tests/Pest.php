@@ -62,6 +62,8 @@ function webhookPayload(Order $order, array $session = [], string $type = 'check
             'object' => 'checkout.session',
             'payment_status' => 'paid',
             'payment_intent' => 'pi_test_123',
+            'amount_total' => $order->total_amount,
+            'currency' => 'jpy',
             'metadata' => ['order_id' => (string) $order->id],
         ], $session)],
     ], JSON_THROW_ON_ERROR);

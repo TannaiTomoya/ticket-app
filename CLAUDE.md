@@ -80,6 +80,10 @@
 - 売上画面の注文の一覧は購入者の名前だけを出す（メールアドレスは出さない）
 - 券種の定員は、押さえている枚数（`withHeldQuantity()`）より下げられない。編集の保存はトランザクションの中で券種の行を `lockForUpdate` してから検証する
 - イベントの開始日時は、券種の販売終了の最大値より前にできない
+- 1人が1つの券種で押さえられるのは、支払い済み＋押さえている支払い待ちを合わせて `OrderService::MAX_QUANTITY`（10枚）まで。購入のたびに、同じ人・同じイベントの決済ページ作成済みの支払い待ちを先に `cancelCheckout` する（Stripe を呼ぶのでトランザクションの外。支払い済みの決済ページは取り消さず数に入れる。Stripe のエラーは `PurchaseException`）
+- `createOrder` は選ばれた券種の行をまとめて id 順に `lockForUpdate` してから数える（ロック待ちのあとに古いスナップショットで数えないため）
+- 確定の前に、Session の `amount_total` と `currency`（jpy）を注文と突き合わせる。違えば確定せず `Log::error`
+- メールの Markdown は `Markdown::withSecuredEncoding()` で、利用者が入れた値をリンクや画像にしない
 
 ### 段階1（残り）
 6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す

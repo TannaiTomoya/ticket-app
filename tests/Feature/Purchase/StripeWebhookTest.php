@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Ticket;
 use App\Models\TicketType;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Create a pending order with one item (3 seats) and a Checkout Session id.
@@ -88,3 +90,20 @@ test('a cancelled order is not revived by a late notification', function () {
     expect($order->refresh()->status)->toBe(OrderStatus::Cancelled)
         ->and(Ticket::count())->toBe(0);
 });
+
+test('a notification whose amount or currency differs from the order is acknowledged but not confirmed', function (array $session) {
+    $order = webhookOrder();
+    Mail::fake();
+    Log::spy();
+
+    postWebhook(webhookPayload($order, $session))->assertOk();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and(Ticket::count())->toBe(0);
+
+    Mail::assertNothingSent();
+    Log::shouldHaveReceived('error')->once();
+})->with([
+    'different amount' => [['amount_total' => 100]],
+    'different currency' => [['currency' => 'usd']],
+]);

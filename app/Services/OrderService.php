@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Stripe\Checkout\Session;
 use Stripe\Exception\ApiErrorException;
@@ -32,6 +33,8 @@ class OrderService
 
     /**
      * Create a pending order with its items for the given ticket type quantities.
+     * The buyer's earlier pending orders for the event are cancelled first, and each ticket type
+     * is limited to MAX_QUANTITY seats per buyer, counting paid and still-held orders.
      *
      * @param  array<int, int|string>  $quantities  ticket type id => quantity
      */
@@ -49,14 +52,23 @@ class OrderService
 
         ksort($quantities);
 
+        $this->cancelEarlierCheckouts($user, $event);
+
         return DB::transaction(function () use ($user, $event, $quantities): Order {
             $lines = [];
             $totalAmount = 0;
 
+            // Lock every selected ticket type (in id order) before counting anything, so the counts
+            // below read the latest committed orders instead of a snapshot taken before a lock wait.
+            $ticketTypes = TicketType::where('event_id', $event->id)
+                ->whereKey(array_keys($quantities))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             foreach ($quantities as $ticketTypeId => $quantity) {
-                $ticketType = TicketType::where('event_id', $event->id)
-                    ->lockForUpdate()
-                    ->find($ticketTypeId);
+                $ticketType = $ticketTypes->get($ticketTypeId);
 
                 if ($ticketType === null) {
                     throw new PurchaseException('選択した券種が見つかりません。');
@@ -64,6 +76,14 @@ class OrderService
 
                 if ($quantity > self::MAX_QUANTITY) {
                     throw new PurchaseException('券種ごとに購入できるのは1枚から'.self::MAX_QUANTITY.'枚までです。');
+                }
+
+                $heldByBuyer = $this->heldQuantityByBuyer($user, $ticketType);
+
+                if ($heldByBuyer + $quantity > self::MAX_QUANTITY) {
+                    $detail = $heldByBuyer > 0 ? "（購入済み・支払い中の {$heldByBuyer} 枚を含みます）" : '';
+
+                    throw new PurchaseException("「{$ticketType->name}」は1人".self::MAX_QUANTITY."枚までです{$detail}。");
                 }
 
                 if (! $ticketType->isOnSale()) {
@@ -96,6 +116,45 @@ class OrderService
 
             return $order;
         });
+    }
+
+    /**
+     * Cancel the buyer's pending orders for the event that still hold seats, outside the transaction
+     * because it calls Stripe. A checkout that was already paid is left alone and counts toward the limit.
+     * Orders without a Checkout Session yet are being created by another request right now, so they
+     * are not cancelled (that request would send the buyer to pay a cancelled order); they still count.
+     *
+     * @throws PurchaseException when Stripe cannot be reached to cancel an earlier checkout
+     */
+    private function cancelEarlierCheckouts(User $user, Event $event): void
+    {
+        $pendingOrders = Order::query()
+            ->whereBelongsTo($user)
+            ->whereBelongsTo($event)
+            ->where('status', OrderStatus::Pending)
+            ->whereNotNull('stripe_checkout_session_id')
+            ->holdingSeats()
+            ->get();
+
+        foreach ($pendingOrders as $pendingOrder) {
+            try {
+                $this->cancelCheckout($pendingOrder);
+            } catch (ApiErrorException $e) {
+                report($e);
+
+                throw new PurchaseException('前の支払い手続きを取り消せませんでした。時間をおいてもう一度お試しください。');
+            }
+        }
+    }
+
+    /**
+     * Count the seats of the ticket type the buyer already holds (paid, or pending within the hold period).
+     */
+    private function heldQuantityByBuyer(User $user, TicketType $ticketType): int
+    {
+        return (int) $ticketType->orderItems()
+            ->whereIn('order_id', Order::query()->whereBelongsTo($user)->holdingSeats()->select('id'))
+            ->sum('quantity');
     }
 
     /**
@@ -151,12 +210,25 @@ class OrderService
     }
 
     /**
-     * Mark the order as paid when the Checkout Session belongs to it and has been paid.
+     * Mark the order as paid when the Checkout Session belongs to it, has been paid,
+     * and charged exactly the order total in yen. A mismatched amount is logged and not confirmed.
      */
     public function confirmCheckout(Order $order, Session $session): bool
     {
         if ($session->id !== $order->stripe_checkout_session_id
             || $session->payment_status !== Session::PAYMENT_STATUS_PAID) {
+            return false;
+        }
+
+        if ($session->amount_total !== $order->total_amount || $session->currency !== 'jpy') {
+            Log::error('Stripe checkout amount does not match the order.', [
+                'order' => $order->id,
+                'session' => $session->id,
+                'amount_total' => $session->amount_total,
+                'currency' => $session->currency,
+                'total_amount' => $order->total_amount,
+            ]);
+
             return false;
         }
 

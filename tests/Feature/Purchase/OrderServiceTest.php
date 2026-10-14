@@ -7,8 +7,12 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
+use App\Services\CheckoutService;
 use App\Services\OrderService;
+use Illuminate\Support\Facades\Log;
+use Livewire\Livewire;
 use Stripe\Checkout\Session;
+use Stripe\Exception\ApiConnectionException;
 
 test('creates a pending order with items whose unit price and total are correct', function () {
     $event = Event::factory()->published()->create();
@@ -166,7 +170,7 @@ test('markAsPaid does nothing for a cancelled order', function () {
 
 test('confirmCheckout does not confirm a session that is unpaid or belongs to another order', function (string $id, string $paymentStatus) {
     $order = payableOrder();
-    $session = Session::constructFrom(['id' => $id, 'payment_status' => $paymentStatus, 'payment_intent' => 'pi_test_123']);
+    $session = Session::constructFrom(['id' => $id, 'payment_status' => $paymentStatus, 'payment_intent' => 'pi_test_123', 'amount_total' => $order->total_amount, 'currency' => 'jpy']);
 
     expect(app(OrderService::class)->confirmCheckout($order, $session))->toBeFalse()
         ->and($order->status)->toBe(OrderStatus::Pending)
@@ -178,8 +182,214 @@ test('confirmCheckout does not confirm a session that is unpaid or belongs to an
 
 test('confirmCheckout confirms a paid session of the order', function () {
     $order = payableOrder();
-    $session = Session::constructFrom(['id' => 'cs_test_123', 'payment_status' => 'paid', 'payment_intent' => 'pi_test_123']);
+    $session = Session::constructFrom(['id' => 'cs_test_123', 'payment_status' => 'paid', 'payment_intent' => 'pi_test_123', 'amount_total' => $order->total_amount, 'currency' => 'jpy']);
 
     expect(app(OrderService::class)->confirmCheckout($order, $session))->toBeTrue()
         ->and($order->status)->toBe(OrderStatus::Paid);
 });
+
+/**
+ * Create an order of the buyer for the ticket type, with one item of the given quantity.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function buyerOrder(User $user, TicketType $ticketType, int $quantity, string $state = 'pending', array $attributes = []): Order
+{
+    $order = Order::factory()->for($user)->for($ticketType->event)
+        ->when($state !== 'pending', fn ($factory) => $factory->{$state}())
+        ->create($attributes + ['stripe_checkout_session_id' => 'cs_'.fake()->unique()->regexify('[a-z0-9]{12}')]);
+    OrderItem::factory()->for($order)->for($ticketType)->create(['quantity' => $quantity]);
+
+    return $order;
+}
+
+/**
+ * Build a Checkout Session carrying only the id and status.
+ */
+function sessionWithStatus(string $id, string $status): Session
+{
+    return Session::constructFrom(['id' => $id, 'status' => $status]);
+}
+
+test('creating a second order cancels the first open checkout and only the second holds seats', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 10]);
+    $user = User::factory()->create();
+    $first = buyerOrder($user, $ticketType, 3, attributes: ['stripe_checkout_session_id' => 'cs_first']);
+
+    $checkout = $this->mock(CheckoutService::class);
+    $checkout->shouldReceive('retrieveSession')->once()->with('cs_first')->andReturn(sessionWithStatus('cs_first', Session::STATUS_OPEN));
+    $checkout->shouldReceive('expireSession')->once()->with('cs_first');
+
+    $second = app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 2]);
+
+    expect($first->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($second->status)->toBe(OrderStatus::Pending)
+        ->and(Order::where('status', OrderStatus::Pending)->count())->toBe(1)
+        ->and($ticketType->remaining())->toBe(8);
+});
+
+test('a completed earlier checkout is not cancelled and counts toward the limit', function (int $quantity, bool $allowed) {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
+    $user = User::factory()->create();
+    $first = buyerOrder($user, $ticketType, 8, attributes: ['stripe_checkout_session_id' => 'cs_first']);
+
+    $checkout = $this->mock(CheckoutService::class);
+    $checkout->shouldReceive('retrieveSession')->with('cs_first')->andReturn(sessionWithStatus('cs_first', Session::STATUS_COMPLETE));
+    $checkout->shouldNotReceive('expireSession');
+
+    $attempt = fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => $quantity]);
+
+    if ($allowed) {
+        expect($attempt()->status)->toBe(OrderStatus::Pending)
+            ->and(Order::count())->toBe(2);
+    } else {
+        expect($attempt)->toThrow(PurchaseException::class, "「{$ticketType->name}」は1人10枚までです（購入済み・支払い中の 8 枚を含みます）。")
+            ->and(Order::count())->toBe(1);
+    }
+
+    expect($first->refresh()->status)->toBe(OrderStatus::Pending);
+})->with([
+    'over the limit' => [3, false],
+    'exactly the limit' => [2, true],
+]);
+
+test('a Stripe error while cancelling the earlier checkout stops the purchase', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 10]);
+    $user = User::factory()->create();
+    $first = buyerOrder($user, $ticketType, 3, attributes: ['stripe_checkout_session_id' => 'cs_first']);
+
+    $this->mock(CheckoutService::class)
+        ->shouldReceive('retrieveSession')->andThrow(new ApiConnectionException('down'));
+
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 1]))
+        ->toThrow(PurchaseException::class, '前の支払い手続きを取り消せませんでした');
+
+    expect(Order::count())->toBe(1)
+        ->and($first->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+test('seats already paid count toward the per-buyer limit', function (int $price, int $paidQuantity, int $quantity, bool $allowed) {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['price' => $price, 'capacity' => 50]);
+    $user = User::factory()->create();
+    buyerOrder($user, $ticketType, $paidQuantity, 'paid');
+
+    $this->mock(CheckoutService::class)->shouldNotReceive('retrieveSession');
+
+    $attempt = fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => $quantity]);
+
+    if ($allowed) {
+        expect($attempt()->status)->toBe(OrderStatus::Pending);
+    } else {
+        expect($attempt)->toThrow(PurchaseException::class, '1人10枚まで');
+    }
+
+    expect(Order::where('status', OrderStatus::Pending)->count())->toBe($allowed ? 1 : 0);
+})->with([
+    'paid 8 then 3' => [3000, 8, 3, false],
+    'paid 8 then 2' => [3000, 8, 2, true],
+    'free paid 8 then 3' => [0, 8, 3, false],
+    'free paid 10 then 1' => [0, 10, 1, false],
+]);
+
+test('a pending order older than the hold period is neither cancelled nor counted', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
+    $user = User::factory()->create();
+    $old = buyerOrder($user, $ticketType, 9, attributes: ['created_at' => now()->subMinutes(Order::HOLD_MINUTES + 1)]);
+
+    $this->mock(CheckoutService::class)->shouldNotReceive('retrieveSession', 'expireSession');
+
+    $order = app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 10]);
+
+    expect($order->status)->toBe(OrderStatus::Pending)
+        ->and($old->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+test('a pending order still waiting for its checkout page is not cancelled but counts toward the limit', function (int $quantity, bool $allowed) {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
+    $user = User::factory()->create();
+    $inFlight = buyerOrder($user, $ticketType, 8, attributes: ['stripe_checkout_session_id' => null]);
+
+    $this->mock(CheckoutService::class)->shouldNotReceive('retrieveSession', 'expireSession');
+
+    $create = fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => $quantity]);
+
+    if ($allowed) {
+        expect($create()->status)->toBe(OrderStatus::Pending);
+    } else {
+        expect($create)->toThrow(PurchaseException::class);
+    }
+
+    expect($inFlight->refresh()->status)->toBe(OrderStatus::Pending);
+})->with([
+    'over the limit' => [3, false],
+    'within the limit' => [2, true],
+]);
+
+test('orders of another event or another buyer are neither cancelled nor counted', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
+    $otherTicketType = TicketType::factory()->for(Event::factory()->published())->create(['capacity' => 50]);
+    $user = User::factory()->create();
+    $otherEventOrder = buyerOrder($user, $otherTicketType, 10);
+    $otherBuyerOrder = buyerOrder(User::factory()->create(), $ticketType, 10);
+    $otherBuyerPaid = buyerOrder(User::factory()->create(), $ticketType, 10, 'paid');
+
+    $this->mock(CheckoutService::class)->shouldNotReceive('retrieveSession', 'expireSession');
+
+    $order = app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 10]);
+
+    expect($order->status)->toBe(OrderStatus::Pending)
+        ->and($otherEventOrder->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and($otherBuyerOrder->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and($otherBuyerPaid->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+test('paying twice from the purchase page leaves a single pending order', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);
+    $user = User::factory()->create();
+    session()->put("purchase.{$event->id}", [$ticketType->id => 6]);
+
+    $checkout = $this->mock(CheckoutService::class);
+    $checkout->shouldReceive('createSession')->twice()->andReturnUsing(function (Order $order): string {
+        $order->forceFill(['stripe_checkout_session_id' => "cs_order_{$order->id}"])->save();
+
+        return 'https://checkout.stripe.test/pay';
+    });
+    $checkout->shouldReceive('retrieveSession')->once()->andReturnUsing(
+        fn (string $id) => sessionWithStatus($id, Session::STATUS_OPEN),
+    );
+    $checkout->shouldReceive('expireSession')->once();
+
+    Livewire::actingAs($user)
+        ->test('pages::events.purchase', ['event' => $event])
+        ->call('pay')
+        ->assertHasNoErrors()
+        ->call('pay')
+        ->assertHasNoErrors();
+
+    expect(Order::where('status', OrderStatus::Pending)->count())->toBe(1)
+        ->and(Order::where('status', OrderStatus::Cancelled)->count())->toBe(1)
+        ->and($ticketType->remaining())->toBe(44);
+});
+
+test('confirmCheckout does not confirm a paid session whose amount or currency differs from the order', function (int $amountTotal, string $currency) {
+    $order = payableOrder();
+    $session = Session::constructFrom(['id' => 'cs_test_123', 'payment_status' => 'paid', 'payment_intent' => 'pi_test_123', 'amount_total' => $amountTotal, 'currency' => $currency]);
+    Log::spy();
+
+    expect(app(OrderService::class)->confirmCheckout($order, $session))->toBeFalse()
+        ->and($order->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and($order->tickets()->count())->toBe(0);
+
+    Log::shouldHaveReceived('error')->once();
+})->with([
+    'lower amount' => [1, 'jpy'],
+    'other currency' => [3000, 'usd'],
+]);
