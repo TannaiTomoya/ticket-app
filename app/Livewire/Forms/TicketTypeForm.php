@@ -20,15 +20,16 @@ class TicketTypeForm extends Form
 
     /**
      * Get the validation rules for a ticket type of the given event.
+     * When editing, the capacity cannot go below the seats already held (paid + recent pending).
      *
      * @return array<string, array<int, string>>
      */
-    public function rulesFor(Event $event): array
+    public function rulesFor(Event $event, ?TicketType $ticketType = null): array
     {
         return [
             'name' => ['required', 'string', 'max:50'],
             'price' => ['required', 'integer', 'min:0', 'max:1000000'],
-            'capacity' => ['required', 'integer', 'min:1', 'max:10000'],
+            'capacity' => ['required', 'integer', 'min:'.max(1, $this->heldQuantity($ticketType)), 'max:10000'],
             'sale_starts_at' => ['required', 'date'],
             'sale_ends_at' => [
                 'required',
@@ -44,11 +45,31 @@ class TicketTypeForm extends Form
      *
      * @return array<string, string>
      */
-    public function messagesFor(Event $event): array
+    public function messagesFor(Event $event, ?TicketType $ticketType = null): array
     {
-        return [
+        $messages = [
             'sale_ends_at.before_or_equal' => '販売終了はイベントの開始日時（'.$event->starts_at->isoFormat('M月D日(ddd) HH:mm').'）以前にしてください。',
         ];
+
+        $heldQuantity = $this->heldQuantity($ticketType);
+
+        if ($heldQuantity > 0) {
+            $messages['capacity.min'] = "定員は、支払い済みと支払い待ちの枚数（{$heldQuantity}枚）より少なくできません。";
+        }
+
+        return $messages;
+    }
+
+    /**
+     * Get the seats held by paid and recent pending orders for the ticket type (0 for a new one).
+     */
+    private function heldQuantity(?TicketType $ticketType): int
+    {
+        if ($ticketType === null) {
+            return 0;
+        }
+
+        return (int) TicketType::query()->withHeldQuantity()->findOrFail($ticketType->id)->held_quantity;
     }
 
     /**

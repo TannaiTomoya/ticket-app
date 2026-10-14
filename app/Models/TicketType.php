@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
 use Database\Factories\TicketTypeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -23,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property int|string|null $held_quantity
+ * @property int|string|null $sold_quantity
+ * @property int|string|null $revenue
  */
 #[Fillable(['name', 'price', 'capacity', 'sale_starts_at', 'sale_ends_at'])]
 class TicketType extends Model
@@ -72,6 +76,21 @@ class TicketType extends Model
         $query->withSum([
             'orderItems as held_quantity' => fn (Builder $query) => $query->whereIn('order_id', Order::query()->holdingSeats()->select('id')),
         ], 'quantity');
+    }
+
+    /**
+     * Load the paid sales as `sold_quantity` (seats) and `revenue` (yen, from the unit price at purchase).
+     * Only paid orders count; pending, cancelled and refunded orders are left out.
+     *
+     * @param  Builder<TicketType>  $query
+     */
+    #[Scope]
+    protected function withPaidSales(Builder $query): void
+    {
+        $paidItems = fn (Builder $query) => $query->whereIn('order_id', Order::query()->where('status', OrderStatus::Paid)->select('id'));
+
+        $query->withSum(['orderItems as sold_quantity' => $paidItems], 'quantity')
+            ->withSum(['orderItems as revenue' => $paidItems], DB::raw('quantity * unit_price'));
     }
 
     /**

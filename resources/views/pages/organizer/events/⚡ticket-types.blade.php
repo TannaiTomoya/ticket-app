@@ -5,6 +5,7 @@ use App\Models\Event;
 use App\Models\TicketType;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -80,7 +81,10 @@ new class extends Component {
 
             Flux::toast(variant: 'success', text: '券種を追加しました。');
         } else {
-            $this->findTicketType($this->editingId)->update($this->validatedInput());
+            DB::transaction(function (): void {
+                $ticketType = $this->event->ticketTypes()->lockForUpdate()->findOrFail($this->editingId);
+                $ticketType->update($this->validatedInput($ticketType));
+            });
 
             Flux::toast(variant: 'success', text: '券種を保存しました。');
         }
@@ -117,12 +121,13 @@ new class extends Component {
 
     /**
      * Validate the form and return the values to save, with numbers as integers.
+     * When editing, the ticket type row is locked by the caller so the held seats cannot change meanwhile.
      *
      * @return array<string, mixed>
      */
-    private function validatedInput(): array
+    private function validatedInput(?TicketType $ticketType = null): array
     {
-        $validated = $this->form->validate($this->form->rulesFor($this->event), $this->form->messagesFor($this->event));
+        $validated = $this->form->validate($this->form->rulesFor($this->event, $ticketType), $this->form->messagesFor($this->event, $ticketType));
 
         return [...$validated, 'price' => (int) $validated['price'], 'capacity' => (int) $validated['capacity']];
     }

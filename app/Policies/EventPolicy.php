@@ -48,6 +48,14 @@ class EventPolicy
     }
 
     /**
+     * The organizer of the event and admins can see its sales.
+     */
+    public function viewOrders(User $user, Event $event): bool
+    {
+        return $this->owns($user, $event) || $user->isAdmin();
+    }
+
+    /**
      * Only admins can unpublish events.
      */
     public function unpublish(User $user, Event $event): bool

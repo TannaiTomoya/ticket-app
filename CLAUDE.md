@@ -48,6 +48,7 @@
 ### 済み
 - 6テーブルのモデル・マイグレーション・ファクトリと Enum、日本語の言語ファイル（laravel-lang）、CI（MySQL 8.4）
 - 工程1〜4: ロールと `role` ミドルウェア、主催者のイベント管理と公開の切り替え（`EventPolicy`、`events.ends_at` を追加）、券種の管理（編集画面に埋め込んだ `⚡ticket-types`）、公開側の一覧・詳細と残り枚数、ロールごとのナビ。タイムゾーンは Asia/Tokyo
+- 工程10: 売上画面と仕上げ（C16）。`/organizer/events/{event}/orders`（`organizer.events.orders`、`EventPolicy::viewOrders`）、`TicketType::withPaidSales()`、定員の下限（`TicketTypeForm::rulesFor`）、開始日時の下限（`EventForm::rulesFor`）
 - 工程9: 購入完了メールとマイページ（C12, C14）。`OrderPaidMail`（`mail.order-paid`）、`/orders`（`orders.index`）、`/orders/{order}`（`orders.show`、`OrderPolicy::view`）→ T12
 - 工程8: 支払いの確定（C11, C13）。`POST /stripe/webhook`（`StripeWebhookController`、CSRF 除外）、`OrderService::markAsPaid` / `confirmCheckout`、完了画面の問い合わせと `wire:poll`、`orders.stripe_payment_intent_id` → T9〜T11
 - 工程7: Stripe Checkout（C10）。`CheckoutService`（createSession / retrieveSession / expireSession）、購入確認から決済ページへ、中断 `/orders/{order}/cancel`（`OrderPolicy::cancel`、`OrderService::cancelCheckout`）
@@ -74,12 +75,16 @@
 - 購入完了メールは `markAsPaid` が true のときだけ、トランザクションの外で同期送信する（キューは使わない）。失敗は `report()` するだけで、送り直さない
 - マイチケットの枚数は `withSum('items as tickets_quantity', 'quantity')` で出す（明細を読み込まない）
 - 参加者の `/dashboard` の行き先は `orders.index`
+- 売上画面は `auth`・`verified`・`role:organizer,admin` の別グループに置き、`EventPolicy::viewOrders`（持ち主・管理者）を `mount` と `hydrate` の両方で確かめる
+- 売上の集計は paid の注文だけ。`withPaidSales()` で販売枚数（`sold_quantity`）と売上（`revenue` = `quantity * unit_price`）を SQL で出し、合計の行は券種の値を足す
+- 売上画面の注文の一覧は購入者の名前だけを出す（メールアドレスは出さない）
+- 券種の定員は、押さえている枚数（`withHeldQuantity()`）より下げられない。編集の保存はトランザクションの中で券種の行を `lockForUpdate` してから検証する
+- イベントの開始日時は、券種の販売終了の最大値より前にできない
 
 ### 段階1（残り）
 6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す
 
 ### 段階2（決済とメール。`feature/payments` ブランチで進める。詳細は [決済とメールの流れ](doc/spec/04_flows_tests_seed.md)）
-10. 売上画面と仕上げ（C16）: `/organizer/events/{event}/orders` は `role:organizer,admin`。定員を下げられるのは「支払い済み ＋ 35分以内の支払い待ち」まで。イベントの開始日時を券種の販売終了より前にさせない。最後に security-audit で点検する
 11. シーダー: [決済とメールの流れ](doc/spec/04_flows_tests_seed.md) の「初期データ」に合わせる（パスワードは全員 `password`）
 
 ### 公開
