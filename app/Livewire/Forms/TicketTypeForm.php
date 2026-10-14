@@ -11,8 +11,8 @@ class TicketTypeForm extends Form
     public string $name = '';
 
     /**
-     * Nullable because Livewire restores an emptied number as null; the required rule then rejects it
-     * instead of a TypeError. The same applies to the capacity.
+     * Nullable because Livewire restores an emptied int-typed property as null; the required rule then
+     * rejects it instead of a TypeError. The same applies to the capacity.
      */
     public int|string|null $price = '';
 
