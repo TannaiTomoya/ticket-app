@@ -3,11 +3,13 @@
 use App\Exceptions\PurchaseException;
 use App\Models\Event;
 use App\Models\TicketType;
+use App\Services\CheckoutService;
 use App\Services\OrderService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Stripe\Exception\ApiErrorException;
 
 new #[Layout('layouts::public'), Title('購入確認')] class extends Component {
     public Event $event;
@@ -66,9 +68,10 @@ new #[Layout('layouts::public'), Title('購入確認')] class extends Component 
     }
 
     /**
-     * Create the pending order. Stock, sale period and quantity limits are checked by the service.
+     * Create the pending order and send the buyer to the Stripe payment page.
+     * Stock, sale period and quantity limits are checked by the service. Free orders skip Stripe.
      */
-    public function pay(OrderService $orders): void
+    public function pay(OrderService $orders, CheckoutService $checkout): void
     {
         $this->authorize('view', $this->event);
 
@@ -82,7 +85,23 @@ new #[Layout('layouts::public'), Title('購入確認')] class extends Component 
 
         session()->forget($this->selectionKey());
 
-        $this->redirectRoute('orders.complete', $order, navigate: true);
+        if ($order->total_amount === 0) {
+            $this->redirectRoute('orders.complete', $order, navigate: true);
+
+            return;
+        }
+
+        try {
+            $url = $checkout->createSession($order);
+        } catch (ApiErrorException $e) {
+            report($e);
+            $orders->cancel($order);
+            $this->addError('purchase', '決済ページを用意できませんでした。時間をおいてもう一度お試しください。');
+
+            return;
+        }
+
+        $this->redirect($url);
     }
 
     /**
@@ -128,7 +147,7 @@ new #[Layout('layouts::public'), Title('購入確認')] class extends Component 
         <flux:heading size="lg">合計 {{ number_format($this->total) }}円</flux:heading>
     </div>
 
-    <flux:text>支払い（Stripe Checkout）は平日課題で実装します。いまは「支払いへ進む」で支払い待ちの注文を作ります。</flux:text>
+    <flux:text>「支払いへ進む」を押すと、Stripe の決済ページに移ります。</flux:text>
 
     <div class="flex flex-wrap items-center justify-end gap-4">
         <flux:link :href="route('events.show', $event)" wire:navigate>イベント詳細に戻る</flux:link>

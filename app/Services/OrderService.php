@@ -10,6 +10,8 @@ use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Stripe\Checkout\Session;
+use Stripe\Exception\ApiErrorException;
 
 class OrderService
 {
@@ -22,6 +24,8 @@ class OrderService
      * The maximum quantity that can be purchased per ticket type in one order.
      */
     public const MAX_QUANTITY = 10;
+
+    public function __construct(private CheckoutService $checkout) {}
 
     /**
      * Create a pending order with its items for the given ticket type quantities.
@@ -89,5 +93,46 @@ class OrderService
 
             return $order;
         });
+    }
+
+    /**
+     * Cancel the order if it is still pending. Its seats are released because cancelled orders hold none.
+     */
+    public function cancel(Order $order): bool
+    {
+        $cancelled = Order::whereKey($order->id)
+            ->where('status', OrderStatus::Pending)
+            ->update(['status' => OrderStatus::Cancelled, 'updated_at' => now()]) === 1;
+
+        $order->refresh();
+
+        return $cancelled;
+    }
+
+    /**
+     * Cancel a pending order whose payment was abandoned, expiring its Checkout Session first
+     * so the payment page cannot be reopened and paid. A completed session is left to be confirmed.
+     *
+     * @throws ApiErrorException
+     */
+    public function cancelCheckout(Order $order): bool
+    {
+        if ($order->status !== OrderStatus::Pending) {
+            return false;
+        }
+
+        if ($order->stripe_checkout_session_id !== null) {
+            $session = $this->checkout->retrieveSession($order->stripe_checkout_session_id);
+
+            if ($session->status === Session::STATUS_COMPLETE) {
+                return false;
+            }
+
+            if ($session->status === Session::STATUS_OPEN) {
+                $this->checkout->expireSession($order->stripe_checkout_session_id);
+            }
+        }
+
+        return $this->cancel($order);
     }
 }
