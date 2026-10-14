@@ -45,5 +45,5 @@ flowchart TD
 ## 補足
 
 - 画面ではないもの：Stripe Checkout の決済ページ（Stripe 側）、Webhook `POST /stripe/webhook`（C11）、購入完了メール（C12）
-- `/dashboard` はロールで振り分ける：管理者は `/admin/events`、主催者は `/organizer/events`、参加者は `/orders`
+- `/dashboard` はロールで振り分ける：管理者はイベント一覧 `/`（管理者の画面 E15 ができるまで）、主催者は `/organizer/events`、参加者は `/orders`
 - 公開側の画面は未ログインでも使えるヘッダー型のレイアウト、ログイン後の画面はサイドバー型のレイアウト
