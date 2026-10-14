@@ -259,3 +259,21 @@ test('the list shows ticket types with formatted prices and delete buttons', fun
         ->assertSee('3,000円')
         ->assertSeeHtml('wire:click="delete('.$ticketType->id.')"');
 });
+
+test('clearing a number field while editing a ticket type shows a validation error and keeps the values', function (string $field, string $message) {
+    $ticketType = TicketType::factory()->create(['price' => 3000, 'capacity' => 20]);
+
+    $errors = Livewire::actingAs($ticketType->event->organizer)
+        ->test('pages::organizer.events.ticket-types', ['event' => $ticketType->event])
+        ->call('edit', $ticketType->id)
+        ->set("form.{$field}", '')
+        ->call('save')
+        ->errors()->get("form.{$field}");
+
+    expect($errors)->toContain($message)
+        ->and($ticketType->refresh()->price)->toBe(3000)
+        ->and($ticketType->capacity)->toBe(20);
+})->with([
+    'price' => ['price', '価格は必須項目です。'],
+    'capacity' => ['capacity', '定員は必須項目です。'],
+]);
