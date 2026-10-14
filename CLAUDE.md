@@ -65,7 +65,8 @@
 - 買えない理由は `PurchaseException` で投げ、画面で `addError('purchase')` → `flux:callout` で出す。`Order` / `OrderItem` は `$fillable` を持たず、プロパティに直接入れて保存する
 - `OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す
 - 決済ページの期限は30分（`CheckoutService::EXPIRES_MINUTES`）、枠を押さえるのは35分（`Order::HOLD_MINUTES`）。押さえる時間を必ず長くし、枠を手放したあとに支払われないようにする
-- 支払い方法はカードだけ（`payment_method_types = card`）。Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
+- 支払い方法は `allowed_payment_method_types` でカードだけに絞る（コンビニ払いのような、あとで入金が決まる方法は確定の処理が対応していないため）
+- Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
 - 決済は章ごとに PR を作る
 - Webhook が 400 を返すのは署名が合わないときだけ。ほかは 2xx を返す（再送させない）。署名の確認は `CheckoutService::constructEvent`
 - 確定の前に `confirmCheckout` で Session の ID が注文のものか、`payment_status` が paid かを確かめる
