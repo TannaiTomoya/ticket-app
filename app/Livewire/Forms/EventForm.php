@@ -35,6 +35,23 @@ class EventForm extends Form
     }
 
     /**
+     * Get the Japanese names of the fields used in validation messages, matching the labels on the screen.
+     * Livewire reads this on every validation, including validate() without arguments.
+     *
+     * @return array<string, string>
+     */
+    public function validationAttributes(): array
+    {
+        return [
+            'title' => 'タイトル',
+            'description' => '説明',
+            'venue' => '会場',
+            'starts_at' => '開始日時',
+            'ends_at' => '終了日時',
+        ];
+    }
+
+    /**
      * Get the validation rules for editing the event.
      * The start cannot move before the latest sale end of its ticket types.
      *
