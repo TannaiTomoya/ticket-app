@@ -123,4 +123,17 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Seeded Admin Password
+    |--------------------------------------------------------------------------
+    |
+    | The password of the admin created by the seeder in production. Outside
+    | production every seeded user uses "password". The seeder stops when this
+    | value is empty in production.
+    |
+    */
+
+    'seed_admin_password' => env('SEED_ADMIN_PASSWORD'),
+
 ];
