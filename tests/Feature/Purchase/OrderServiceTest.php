@@ -8,6 +8,7 @@ use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
 use App\Services\OrderService;
+use Stripe\Checkout\Session;
 
 test('creates a pending order with items whose unit price and total are correct', function () {
     $event = Event::factory()->published()->create();
@@ -124,4 +125,61 @@ test('rolls back the order and its already-saved items when a later item fails t
 
     expect(Order::count())->toBe(0)
         ->and(OrderItem::count())->toBe(0);
+});
+
+/**
+ * Create a pending order with one item of the given quantity and a Checkout Session id.
+ */
+function payableOrder(int $quantity = 3, bool $cancelled = false): Order
+{
+    $ticketType = TicketType::factory()->for(Event::factory()->published())->create(['capacity' => 10]);
+    $order = Order::factory()->for($ticketType->event)
+        ->when($cancelled, fn ($factory) => $factory->cancelled())
+        ->create(['stripe_checkout_session_id' => 'cs_test_123']);
+    OrderItem::factory()->for($order)->for($ticketType)->create(['quantity' => $quantity]);
+
+    return $order;
+}
+
+test('markAsPaid confirms a pending order once and issues one ticket per seat', function () {
+    $order = payableOrder(quantity: 3);
+
+    expect(app(OrderService::class)->markAsPaid($order, 'pi_test_123'))->toBeTrue()
+        ->and($order->status)->toBe(OrderStatus::Paid)
+        ->and($order->stripe_payment_intent_id)->toBe('pi_test_123')
+        ->and(app(OrderService::class)->markAsPaid($order, 'pi_test_123'))->toBeFalse();
+
+    $tickets = $order->tickets()->get();
+    expect($tickets)->toHaveCount(3)
+        ->and($tickets->every(fn ($ticket) => strlen($ticket->code) === 26))->toBeTrue()
+        ->and($tickets->pluck('code')->unique())->toHaveCount(3);
+});
+
+test('markAsPaid does nothing for a cancelled order', function () {
+    $order = payableOrder(cancelled: true);
+
+    expect(app(OrderService::class)->markAsPaid($order, 'pi_test_123'))->toBeFalse()
+        ->and($order->status)->toBe(OrderStatus::Cancelled)
+        ->and($order->paid_at)->toBeNull()
+        ->and($order->tickets()->count())->toBe(0);
+});
+
+test('confirmCheckout does not confirm a session that is unpaid or belongs to another order', function (string $id, string $paymentStatus) {
+    $order = payableOrder();
+    $session = Session::constructFrom(['id' => $id, 'payment_status' => $paymentStatus, 'payment_intent' => 'pi_test_123']);
+
+    expect(app(OrderService::class)->confirmCheckout($order, $session))->toBeFalse()
+        ->and($order->status)->toBe(OrderStatus::Pending)
+        ->and($order->tickets()->count())->toBe(0);
+})->with([
+    'unpaid' => ['cs_test_123', 'unpaid'],
+    'other session' => ['cs_test_other', 'paid'],
+]);
+
+test('confirmCheckout confirms a paid session of the order', function () {
+    $order = payableOrder();
+    $session = Session::constructFrom(['id' => 'cs_test_123', 'payment_status' => 'paid', 'payment_intent' => 'pi_test_123']);
+
+    expect(app(OrderService::class)->confirmCheckout($order, $session))->toBeTrue()
+        ->and($order->status)->toBe(OrderStatus::Paid);
 });

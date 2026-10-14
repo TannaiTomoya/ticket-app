@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property OrderStatus $status
  * @property int $total_amount
  * @property string|null $stripe_checkout_session_id
+ * @property string|null $stripe_payment_intent_id
  * @property Carbon|null $paid_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at

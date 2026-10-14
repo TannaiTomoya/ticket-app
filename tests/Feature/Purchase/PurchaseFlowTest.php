@@ -162,7 +162,7 @@ test('the complete page is visible to the buyer, the organizer, and admins', fun
     Livewire::actingAs($makeUser($order))
         ->test('pages::orders.complete', ['order' => $order])
         ->assertOk()
-        ->assertSee('注文を受け付けました');
+        ->assertSee('注文番号');
 })->with([
     'buyer' => [fn (Order $order) => $order->user],
     'organizer' => [fn (Order $order) => $order->event->organizer],

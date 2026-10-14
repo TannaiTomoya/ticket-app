@@ -1,28 +1,86 @@
 <?php
 
+use App\Enums\OrderStatus;
 use App\Models\Order;
+use App\Services\CheckoutService;
+use App\Services\OrderService;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Stripe\Exception\ApiErrorException;
 
-new #[Layout('layouts::public'), Title('注文を受け付けました')] class extends Component {
+new #[Layout('layouts::public'), Title('購入手続き')] class extends Component {
     public Order $order;
+
+    /**
+     * The Checkout Session id Stripe appended to the success URL. Kept for polling, never set by the browser.
+     */
+    #[Locked]
+    public ?string $sessionId = null;
 
     /**
      * Mount the component. Only the buyer, the event's organizer and admins may see the order.
      */
-    public function mount(Order $order): void
+    public function mount(Order $order, OrderService $orders, CheckoutService $checkout): void
     {
         $this->authorize('view', $order);
 
         $this->order = $order->load('event', 'items.ticketType');
+        $sessionId = request()->query('session_id');
+        $this->sessionId = is_string($sessionId) ? $sessionId : null;
+
+        $this->confirmPayment($orders, $checkout);
+    }
+
+    /**
+     * Ask Stripe whether the Checkout Session was paid, in case the webhook has not arrived yet.
+     */
+    public function confirmPayment(OrderService $orders, CheckoutService $checkout): void
+    {
+        $this->authorize('view', $this->order);
+
+        $this->order->refresh();
+
+        if ($this->order->status !== OrderStatus::Pending
+            || $this->sessionId === null
+            || $this->sessionId !== $this->order->stripe_checkout_session_id) {
+            return;
+        }
+
+        try {
+            $orders->confirmCheckout($this->order, $checkout->retrieveSession($this->sessionId));
+        } catch (ApiErrorException $e) {
+            report($e);
+        }
+
+        unset($this->ticketCount);
+    }
+
+    /**
+     * Get the number of tickets issued for the order.
+     */
+    #[Computed]
+    public function ticketCount(): int
+    {
+        return $this->order->tickets()->count();
     }
 }; ?>
 
 <section class="w-full max-w-3xl space-y-8">
     <div class="space-y-2">
-        <flux:heading size="xl" level="1">注文を受け付けました</flux:heading>
-        <flux:text>この注文は「{{ $order->status->label() }}」です。支払いの確認が済むと、チケットが発行されます。</flux:text>
+        @if ($order->status === OrderStatus::Paid)
+            <flux:heading size="xl" level="1">購入が完了しました</flux:heading>
+            <flux:text>チケットを {{ $this->ticketCount }} 枚発行しました。</flux:text>
+        @elseif ($order->status === OrderStatus::Pending)
+            <div wire:poll.5s="confirmPayment" class="space-y-2">
+                <flux:heading size="xl" level="1">支払いを確認しています</flux:heading>
+                <flux:text>確認が済むと、この画面は自動で切り替わります。</flux:text>
+            </div>
+        @else
+            <flux:heading size="xl" level="1">この注文は取り消されています</flux:heading>
+        @endif
     </div>
 
     <div class="space-y-1">
