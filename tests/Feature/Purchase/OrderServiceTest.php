@@ -229,6 +229,52 @@ test('creating a second order cancels the first open checkout and only the secon
         ->and($ticketType->remaining())->toBe(8);
 });
 
+test('a purchase that fails keeps the earlier pending order and its checkout', function (Closure $breakPurchase) {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 20]);
+    $user = User::factory()->create();
+    buyerOrder($user, $ticketType, 2, 'paid');
+    $earlier = buyerOrder($user, $ticketType, 1, attributes: ['stripe_checkout_session_id' => 'cs_earlier']);
+    $quantity = $breakPurchase($ticketType);
+
+    $this->mock(CheckoutService::class)->shouldNotReceive('retrieveSession', 'expireSession');
+
+    expect(fn () => app(OrderService::class)->createOrder($user, $event, [$ticketType->id => $quantity]))
+        ->toThrow(PurchaseException::class);
+
+    expect($earlier->refresh()->status)->toBe(OrderStatus::Pending);
+})->with([
+    'over the per-buyer limit' => [fn (TicketType $ticketType) => 9],
+    'sold out' => [function (TicketType $ticketType) {
+        buyerOrder(User::factory()->create(), $ticketType, 17, 'paid');
+
+        return 2;
+    }],
+    'outside the sale period' => [function (TicketType $ticketType) {
+        $ticketType->update(['sale_ends_at' => now()->subMinute(), 'sale_starts_at' => now()->subDay()]);
+
+        return 1;
+    }],
+]);
+
+test('the seats of the checkout being replaced are free for the new purchase', function () {
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['capacity' => 5]);
+    $user = User::factory()->create();
+    buyerOrder(User::factory()->create(), $ticketType, 2, 'paid');
+    $earlier = buyerOrder($user, $ticketType, 3, attributes: ['stripe_checkout_session_id' => 'cs_earlier']);
+
+    $checkout = $this->mock(CheckoutService::class);
+    $checkout->shouldReceive('retrieveSession')->once()->andReturn(sessionWithStatus('cs_earlier', Session::STATUS_OPEN));
+    $checkout->shouldReceive('expireSession')->once();
+
+    $order = app(OrderService::class)->createOrder($user, $event, [$ticketType->id => 3]);
+
+    expect($order->status)->toBe(OrderStatus::Pending)
+        ->and($earlier->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($ticketType->remaining())->toBe(0);
+});
+
 test('a completed earlier checkout is not cancelled and counts toward the limit', function (int $quantity, bool $allowed) {
     $event = Event::factory()->published()->create();
     $ticketType = TicketType::factory()->for($event)->create(['capacity' => 50]);

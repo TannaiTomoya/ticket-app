@@ -10,6 +10,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -33,8 +35,10 @@ class OrderService
 
     /**
      * Create a pending order with its items for the given ticket type quantities.
-     * The buyer's earlier pending orders for the event are cancelled first, and each ticket type
-     * is limited to MAX_QUANTITY seats per buyer, counting paid and still-held orders.
+     * Each ticket type is limited to MAX_QUANTITY seats per buyer, counting paid and still-held orders.
+     * The buyer's earlier checkouts for the event are cancelled, but only after a first check (without
+     * locks, leaving those earlier orders out of the counts) shows the new purchase can go through,
+     * so a purchase that fails does not throw away the earlier one.
      *
      * @param  array<int, int|string>  $quantities  ticket type id => quantity
      */
@@ -52,57 +56,20 @@ class OrderService
 
         ksort($quantities);
 
-        $this->cancelEarlierCheckouts($user, $event);
+        $earlierCheckouts = $this->earlierCheckouts($user, $event);
+
+        $this->checkLines($user, $event, $quantities, $earlierCheckouts->modelKeys(), lock: false);
+
+        $this->cancelCheckouts($earlierCheckouts);
 
         return DB::transaction(function () use ($user, $event, $quantities): Order {
-            $lines = [];
-            $totalAmount = 0;
-
-            // Lock every selected ticket type (in id order) before counting anything, so the counts
-            // below read the latest committed orders instead of a snapshot taken before a lock wait.
-            $ticketTypes = TicketType::where('event_id', $event->id)
-                ->whereKey(array_keys($quantities))
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('id');
-
-            foreach ($quantities as $ticketTypeId => $quantity) {
-                $ticketType = $ticketTypes->get($ticketTypeId);
-
-                if ($ticketType === null) {
-                    throw new PurchaseException('選択した券種が見つかりません。');
-                }
-
-                if ($quantity > self::MAX_QUANTITY) {
-                    throw new PurchaseException('券種ごとに購入できるのは1枚から'.self::MAX_QUANTITY.'枚までです。');
-                }
-
-                $heldByBuyer = $this->heldQuantityByBuyer($user, $ticketType);
-
-                if ($heldByBuyer + $quantity > self::MAX_QUANTITY) {
-                    $detail = $heldByBuyer > 0 ? "（購入済み・支払い中の {$heldByBuyer} 枚を含みます）" : '';
-
-                    throw new PurchaseException("「{$ticketType->name}」は1人".self::MAX_QUANTITY."枚までです{$detail}。");
-                }
-
-                if (! $ticketType->isOnSale()) {
-                    throw new PurchaseException("「{$ticketType->name}」は現在販売期間外です。");
-                }
-
-                if ($quantity > $ticketType->remaining()) {
-                    throw new PurchaseException("「{$ticketType->name}」の残り枚数が足りません。");
-                }
-
-                $lines[] = ['ticket_type' => $ticketType, 'quantity' => $quantity];
-                $totalAmount += $quantity * $ticketType->price;
-            }
+            $lines = $this->checkLines($user, $event, $quantities, [], lock: true);
 
             $order = new Order;
             $order->user_id = $user->id;
             $order->event_id = $event->id;
             $order->status = OrderStatus::Pending;
-            $order->total_amount = $totalAmount;
+            $order->total_amount = array_sum(array_map(fn (array $line): int => $line['quantity'] * $line['ticket_type']->price, $lines));
             $order->save();
 
             foreach ($lines as $line) {
@@ -119,26 +86,90 @@ class OrderService
     }
 
     /**
-     * Cancel the buyer's pending orders for the event that still hold seats, outside the transaction
-     * because it calls Stripe. A checkout that was already paid is left alone and counts toward the limit.
+     * Check every selected ticket type and return the order lines, or throw the reason it cannot be bought.
+     * With $lock, the ticket type rows are locked (in id order) before counting, so the counts read the
+     * latest committed orders instead of a snapshot taken before a lock wait.
+     *
+     * @param  array<int, int>  $quantities  ticket type id => quantity
+     * @param  array<int, int>  $ignoredOrderIds  orders about to be cancelled, left out of the counts
+     * @return list<array{ticket_type: TicketType, quantity: int}>
+     *
+     * @throws PurchaseException
+     */
+    private function checkLines(User $user, Event $event, array $quantities, array $ignoredOrderIds, bool $lock): array
+    {
+        $query = TicketType::where('event_id', $event->id)
+            ->whereKey(array_keys($quantities))
+            ->orderBy('id');
+
+        $ticketTypes = ($lock ? $query->lockForUpdate() : $query)->get()->keyBy('id');
+
+        $lines = [];
+
+        foreach ($quantities as $ticketTypeId => $quantity) {
+            $ticketType = $ticketTypes->get($ticketTypeId);
+
+            if ($ticketType === null) {
+                throw new PurchaseException('選択した券種が見つかりません。');
+            }
+
+            if ($quantity > self::MAX_QUANTITY) {
+                throw new PurchaseException('券種ごとに購入できるのは1枚から'.self::MAX_QUANTITY.'枚までです。');
+            }
+
+            $heldByBuyer = $this->heldQuantity($ticketType, $ignoredOrderIds, $user);
+
+            if ($heldByBuyer + $quantity > self::MAX_QUANTITY) {
+                $detail = $heldByBuyer > 0 ? "（購入済み・支払い中の {$heldByBuyer} 枚を含みます）" : '';
+
+                throw new PurchaseException("「{$ticketType->name}」は1人".self::MAX_QUANTITY."枚までです{$detail}。");
+            }
+
+            if (! $ticketType->isOnSale()) {
+                throw new PurchaseException("「{$ticketType->name}」は現在販売期間外です。");
+            }
+
+            if ($quantity > $ticketType->capacity - $this->heldQuantity($ticketType, $ignoredOrderIds)) {
+                throw new PurchaseException("「{$ticketType->name}」の残り枚数が足りません。");
+            }
+
+            $lines[] = ['ticket_type' => $ticketType, 'quantity' => $quantity];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Get the buyer's pending orders for the event that still hold seats and already have a Checkout Session.
      * Orders without a Checkout Session yet are being created by another request right now, so they
      * are not cancelled (that request would send the buyer to pay a cancelled order); they still count.
      *
-     * @throws PurchaseException when Stripe cannot be reached to cancel an earlier checkout
+     * @return Collection<int, Order>
      */
-    private function cancelEarlierCheckouts(User $user, Event $event): void
+    private function earlierCheckouts(User $user, Event $event): Collection
     {
-        $pendingOrders = Order::query()
+        return Order::query()
             ->whereBelongsTo($user)
             ->whereBelongsTo($event)
             ->where('status', OrderStatus::Pending)
             ->whereNotNull('stripe_checkout_session_id')
             ->holdingSeats()
             ->get();
+    }
 
-        foreach ($pendingOrders as $pendingOrder) {
+    /**
+     * Cancel the given checkouts, outside the transaction because it calls Stripe.
+     * A checkout that was already paid is left alone and counts toward the limit in the locked check.
+     *
+     * @param  Collection<int, Order>  $orders
+     *
+     * @throws PurchaseException when Stripe cannot be reached to cancel an earlier checkout
+     */
+    private function cancelCheckouts(Collection $orders): void
+    {
+        foreach ($orders as $order) {
             try {
-                $this->cancelCheckout($pendingOrder);
+                $this->cancelCheckout($order);
             } catch (ApiErrorException $e) {
                 report($e);
 
@@ -148,13 +179,20 @@ class OrderService
     }
 
     /**
-     * Count the seats of the ticket type the buyer already holds (paid, or pending within the hold period).
+     * Count the seats of the ticket type held by paid and recent pending orders, leaving out the given
+     * orders. With a buyer, only that buyer's orders are counted.
+     *
+     * @param  array<int, int>  $ignoredOrderIds
      */
-    private function heldQuantityByBuyer(User $user, TicketType $ticketType): int
+    private function heldQuantity(TicketType $ticketType, array $ignoredOrderIds, ?User $buyer = null): int
     {
-        return (int) $ticketType->orderItems()
-            ->whereIn('order_id', Order::query()->whereBelongsTo($user)->holdingSeats()->select('id'))
-            ->sum('quantity');
+        $holdingOrders = Order::query()
+            ->holdingSeats()
+            ->whereKeyNot($ignoredOrderIds)
+            ->when($buyer !== null, fn (Builder $query) => $query->whereBelongsTo($buyer))
+            ->select('id');
+
+        return (int) $ticketType->orderItems()->whereIn('order_id', $holdingOrders)->sum('quantity');
     }
 
     /**
