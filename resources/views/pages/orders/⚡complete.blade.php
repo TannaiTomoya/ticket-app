@@ -73,6 +73,7 @@ new #[Layout('layouts::public'), Title('購入手続き')] class extends Compone
         @if ($order->status === OrderStatus::Paid)
             <flux:heading size="xl" level="1">購入が完了しました</flux:heading>
             <flux:text>チケットを {{ $this->ticketCount }} 枚発行しました。</flux:text>
+            <flux:button variant="primary" :href="route('orders.show', $order)" wire:navigate>注文の詳細とチケットを見る</flux:button>
         @elseif ($order->status === OrderStatus::Pending)
             <div wire:poll.5s="confirmPayment" class="space-y-2">
                 <flux:heading size="xl" level="1">支払いを確認しています</flux:heading>

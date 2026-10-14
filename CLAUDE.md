@@ -48,6 +48,7 @@
 ### 済み
 - 6テーブルのモデル・マイグレーション・ファクトリと Enum、日本語の言語ファイル（laravel-lang）、CI（MySQL 8.4）
 - 工程1〜4: ロールと `role` ミドルウェア、主催者のイベント管理と公開の切り替え（`EventPolicy`、`events.ends_at` を追加）、券種の管理（編集画面に埋め込んだ `⚡ticket-types`）、公開側の一覧・詳細と残り枚数、ロールごとのナビ。タイムゾーンは Asia/Tokyo
+- 工程9: 購入完了メールとマイページ（C12, C14）。`OrderPaidMail`（`mail.order-paid`）、`/orders`（`orders.index`）、`/orders/{order}`（`orders.show`、`OrderPolicy::view`）→ T12
 - 工程8: 支払いの確定（C11, C13）。`POST /stripe/webhook`（`StripeWebhookController`、CSRF 除外）、`OrderService::markAsPaid` / `confirmCheckout`、完了画面の問い合わせと `wire:poll`、`orders.stripe_payment_intent_id` → T9〜T11
 - 工程7: Stripe Checkout（C10）。`CheckoutService`（createSession / retrieveSession / expireSession）、購入確認から決済ページへ、中断 `/orders/{order}/cancel`（`OrderPolicy::cancel`、`OrderService::cancelCheckout`）
 - 工程5: 購入の注文作成（C8, C9）。詳細で券種ごとに枚数を選ぶ → 購入確認 `/events/{event}/purchase` → `App\Services\OrderService::createOrder`（`lockForUpdate`、単価は DB から）→ 完了 `/orders/{order}/complete`（`OrderPolicy::view`。工程7で Stripe へ差し替える） → T6〜T8
@@ -64,17 +65,20 @@
 - 買えない理由は `PurchaseException` で投げ、画面で `addError('purchase')` → `flux:callout` で出す。`Order` / `OrderItem` は `$fillable` を持たず、プロパティに直接入れて保存する
 - `OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す
 - 決済ページの期限は30分（`CheckoutService::EXPIRES_MINUTES`）、枠を押さえるのは35分（`Order::HOLD_MINUTES`）。押さえる時間を必ず長くし、枠を手放したあとに支払われないようにする
-- 支払い方法はカードだけ（`payment_method_types = card`）。Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
+- 支払い方法は `allowed_payment_method_types` でカードだけに絞る（コンビニ払いのような、あとで入金が決まる方法は確定の処理が対応していないため）
+- Stripe 側で期限切れになった決済ページの注文は pending のまま残す（押さえる時間を過ぎれば枠は戻る）
 - 決済は章ごとに PR を作る
 - Webhook が 400 を返すのは署名が合わないときだけ。ほかは 2xx を返す（再送させない）。署名の確認は `CheckoutService::constructEvent`
 - 確定の前に `confirmCheckout` で Session の ID が注文のものか、`payment_status` が paid かを確かめる
 - 0円の注文も `markAsPaid` を通す（チケットの発行を1か所にまとめる）
+- 購入完了メールは `markAsPaid` が true のときだけ、トランザクションの外で同期送信する（キューは使わない）。失敗は `report()` するだけで、送り直さない
+- マイチケットの枚数は `withSum('items as tickets_quantity', 'quantity')` で出す（明細を読み込まない）
+- 参加者の `/dashboard` の行き先は `orders.index`
 
 ### 段階1（残り）
 6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す
 
 ### 段階2（決済とメール。`feature/payments` ブランチで進める。詳細は [決済とメールの流れ](doc/spec/04_flows_tests_seed.md)）
-9. 購入完了メールとマイページ（C12, C14）: メールは `markAsPaid` が true を返したときだけ送る。`OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す → T12
 10. 売上画面と仕上げ（C16）: `/organizer/events/{event}/orders` は `role:organizer,admin`。定員を下げられるのは「支払い済み ＋ 35分以内の支払い待ち」まで。イベントの開始日時を券種の販売終了より前にさせない。最後に security-audit で点検する
 11. シーダー: [決済とメールの流れ](doc/spec/04_flows_tests_seed.md) の「初期データ」に合わせる（パスワードは全員 `password`）
 

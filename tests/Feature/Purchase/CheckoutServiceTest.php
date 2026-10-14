@@ -20,7 +20,7 @@ test('creates a Checkout Session from the order items and stores its id', functi
         ->once()
         ->with('post', '/v1/checkout/sessions', Mockery::on(fn (array $params): bool => $params === [
             'mode' => 'payment',
-            'payment_method_types' => ['card'],
+            'allowed_payment_method_types' => ['card'],
             'line_items' => [[
                 'price_data' => [
                     'currency' => 'jpy',

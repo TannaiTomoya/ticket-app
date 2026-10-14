@@ -13,6 +13,8 @@ Route::post('stripe/webhook', StripeWebhookController::class)->name('stripe.webh
 
 Route::middleware('auth')->group(function () {
     Route::livewire('events/{event}/purchase', 'pages::events.purchase')->name('events.purchase');
+    Route::livewire('orders', 'pages::orders.index')->name('orders.index');
+    Route::livewire('orders/{order}', 'pages::orders.show')->name('orders.show');
     Route::livewire('orders/{order}/complete', 'pages::orders.complete')->name('orders.complete');
     Route::livewire('orders/{order}/cancel', 'pages::orders.cancel')->name('orders.cancel');
 });
@@ -21,7 +23,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', fn (Request $request) => redirect(match ($request->user()->role) {
         UserRole::Admin => '/admin/events',
         UserRole::Organizer => route('organizer.events.index'),
-        UserRole::Customer => '/orders',
+        UserRole::Customer => route('orders.index'),
     }))->name('dashboard');
 });
 

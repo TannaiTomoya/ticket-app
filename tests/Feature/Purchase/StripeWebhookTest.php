@@ -6,7 +6,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Ticket;
 use App\Models\TicketType;
-use Illuminate\Testing\TestResponse;
 
 /**
  * Create a pending order with one item (3 seats) and a Checkout Session id.
@@ -20,43 +19,6 @@ function webhookOrder(int $quantity = 3, bool $cancelled = false): Order
     OrderItem::factory()->for($order)->for($ticketType)->create(['quantity' => $quantity]);
 
     return $order;
-}
-
-/**
- * Build a Stripe event JSON payload carrying a Checkout Session.
- *
- * @param  array<string, mixed>  $session
- */
-function webhookPayload(Order $order, array $session = [], string $type = 'checkout.session.completed'): string
-{
-    return json_encode([
-        'id' => 'evt_test_123',
-        'object' => 'event',
-        'type' => $type,
-        'data' => ['object' => array_merge([
-            'id' => $order->stripe_checkout_session_id,
-            'object' => 'checkout.session',
-            'payment_status' => 'paid',
-            'payment_intent' => 'pi_test_123',
-            'metadata' => ['order_id' => (string) $order->id],
-        ], $session)],
-    ], JSON_THROW_ON_ERROR);
-}
-
-/**
- * Send the payload to the webhook, signed with the given secret (or unsigned when null).
- */
-function postWebhook(string $payload, ?string $secret = 'whsec_dummy'): TestResponse
-{
-    $server = ['CONTENT_TYPE' => 'application/json'];
-
-    if ($secret !== null) {
-        $timestamp = time();
-        $signature = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
-        $server['HTTP_STRIPE_SIGNATURE'] = "t={$timestamp},v1={$signature}";
-    }
-
-    return test()->call('POST', route('stripe.webhook'), [], [], [], $server, $payload);
 }
 
 test('a signed completed notification marks the order paid and issues the tickets', function () {

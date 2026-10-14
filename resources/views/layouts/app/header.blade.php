@@ -16,7 +16,7 @@
                 <flux:navbar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
                     イベント一覧
                 </flux:navbar.item>
-                <flux:navbar.item icon="clipboard-document-list" :href="url('/orders')" :current="request()->is('orders*')" wire:navigate>
+                <flux:navbar.item icon="clipboard-document-list" :href="route('orders.index')" :current="request()->is('orders*')" wire:navigate>
                     マイチケット
                 </flux:navbar.item>
                 @can('create', App\Models\Event::class)
@@ -78,7 +78,7 @@
                     <flux:sidebar.item icon="ticket" :href="route('home')" :current="request()->routeIs('home', 'events.*')" wire:navigate>
                         イベント一覧
                     </flux:sidebar.item>
-                    <flux:sidebar.item icon="clipboard-document-list" :href="url('/orders')" :current="request()->is('orders*')" wire:navigate>
+                    <flux:sidebar.item icon="clipboard-document-list" :href="route('orders.index')" :current="request()->is('orders*')" wire:navigate>
                         マイチケット
                     </flux:sidebar.item>
                     @can('create', App\Models\Event::class)
