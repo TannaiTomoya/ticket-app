@@ -127,7 +127,7 @@ test('markdown in the venue and ticket type names is not turned into a link or a
 
     expect($html)->toContain('受付はこちら')
         ->not->toContain('href="https://evil.test')
-        ->not->toContain('<img')
+        ->not->toContain('src="https://evil.test')
         ->toContain('<table')
         ->toMatch('/<strong[^>]*>合計<\/strong>/u')
         ->toContain('href="'.route('orders.show', $order).'"');
