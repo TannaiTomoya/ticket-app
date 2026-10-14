@@ -41,6 +41,23 @@ class TicketTypeForm extends Form
     }
 
     /**
+     * Get the Japanese names of the fields used in validation messages, matching the labels on the screen.
+     * Livewire reads this on every validation, including validate() without arguments.
+     *
+     * @return array<string, string>
+     */
+    public function validationAttributes(): array
+    {
+        return [
+            'name' => '券種名',
+            'price' => '価格',
+            'capacity' => '定員',
+            'sale_starts_at' => '販売開始',
+            'sale_ends_at' => '販売終了',
+        ];
+    }
+
+    /**
      * Get the custom validation messages for a ticket type of the given event.
      *
      * @return array<string, string>

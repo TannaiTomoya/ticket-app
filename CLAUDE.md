@@ -48,6 +48,7 @@
 ### 済み
 - 6テーブルのモデル・マイグレーション・ファクトリと Enum、日本語の言語ファイル（laravel-lang）、CI（MySQL 8.4）
 - 工程1〜4: ロールと `role` ミドルウェア、主催者のイベント管理と公開の切り替え（`EventPolicy`、`events.ends_at` を追加）、券種の管理（編集画面に埋め込んだ `⚡ticket-types`）、公開側の一覧・詳細と残り枚数、ロールごとのナビ。タイムゾーンは Asia/Tokyo
+- 工程6: エラー文の項目名を日本語にする（C17）。`EventForm` / `TicketTypeForm` の `validationAttributes()`
 - 工程11: シーダー。`UserSeeder`・`EventSeeder`・`OrderSeeder`（`local`・`testing` のとき）。それ以外の環境は `admin@example.com` だけを `SEED_ADMIN_PASSWORD` で作る
 - 工程10: 売上画面と仕上げ（C16）。`/organizer/events/{event}/orders`（`organizer.events.orders`、`EventPolicy::viewOrders`）、`TicketType::withPaidSales()`、定員の下限（`TicketTypeForm::rulesFor`）、開始日時の下限（`EventForm::rulesFor`）
 - 工程9: 購入完了メールとマイページ（C12, C14）。`OrderPaidMail`（`mail.order-paid`）、`/orders`（`orders.index`）、`/orders/{order}`（`orders.show`、`OrderPolicy::view`）→ T12
@@ -81,14 +82,12 @@
 - 売上画面の注文の一覧は購入者の名前だけを出す（メールアドレスは出さない）
 - 券種の定員は、押さえている枚数（`withHeldQuantity()`）より下げられない。編集の保存はトランザクションの中で券種の行を `lockForUpdate` してから検証する
 - イベントの開始日時は、券種の販売終了の最大値より前にできない
+- エラー文の項目名は、フォームオブジェクトの `validationAttributes()`（キーは `form.` なし）で画面の見出しにそろえる。共通の `lang/ja/validation.php` の `attributes` には足さない（`name` などが別の画面の項目名まで変えてしまうため）
 - デモデータ（全員のパスワードは `password`）を入れるのは `local` と `testing` だけで、`migrate:fresh --seed` で流す。ほかの環境は管理者1人だけを `SEED_ADMIN_PASSWORD`（`config('app.seed_admin_password')`）で作り、空なら止める。すでにいる管理者は書き換えない
 - 1人が1つの券種で押さえられるのは、支払い済み＋押さえている支払い待ちを合わせて `OrderService::MAX_QUANTITY`（10枚）まで。購入のときは、まずロックなしで上限と残り枚数を確かめ（これから取り消す前の支払い待ちは数えない）、通ったときだけ同じ人・同じイベントの決済ページ作成済みの支払い待ちを `cancelCheckout` する（Stripe を呼ぶのでトランザクションの外。支払い済みの決済ページは取り消さず数に入れる。Stripe のエラーは `PurchaseException`）。そのあとトランザクションの中でロックしてから確かめ直す（decisions.md #15）
 - `createOrder` は選ばれた券種の行をまとめて id 順に `lockForUpdate` してから数える（ロック待ちのあとに古いスナップショットで数えないため）
 - 確定の前に、Session の `amount_total` と `currency`（jpy）を注文と突き合わせる。違えば確定せず `Log::error`
 - メールの Markdown は `Markdown::withSecuredEncoding()` で、利用者が入れた値をリンクや画像にしない
-
-### 段階1（残り）
-6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す
 
 ### 段階2（決済とメール。`feature/payments` ブランチで進める。詳細は [決済とメールの流れ](doc/spec/04_flows_tests_seed.md)）
 
