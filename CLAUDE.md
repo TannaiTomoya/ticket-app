@@ -48,6 +48,7 @@
 ### 済み
 - 6テーブルのモデル・マイグレーション・ファクトリと Enum、日本語の言語ファイル（laravel-lang）、CI（MySQL 8.4）
 - 工程1〜4: ロールと `role` ミドルウェア、主催者のイベント管理と公開の切り替え（`EventPolicy`、`events.ends_at` を追加）、券種の管理（編集画面に埋め込んだ `⚡ticket-types`）、公開側の一覧・詳細と残り枚数、ロールごとのナビ。タイムゾーンは Asia/Tokyo
+- 工程5: 購入の注文作成（C8, C9）。詳細で券種ごとに枚数を選ぶ → 購入確認 `/events/{event}/purchase` → `App\Services\OrderService::createOrder`（`lockForUpdate`、単価は DB から）→ 完了 `/orders/{order}/complete`（`OrderPolicy::view`。工程7で Stripe へ差し替える） → T6〜T8
 
 ### 決めたこと
 - 券種の販売期間の列名は `sale_starts_at` / `sale_ends_at`。チケットの `code` は UUID ではなく ULID
@@ -56,9 +57,12 @@
 - 公開の切り替えと券種の操作は、イベントの `update` 権限で守る。管理者が非公開にしたイベントを、主催者は公開に戻せない（403）
 - 入力と検証はフォームオブジェクト（`app/Livewire/Forms/`）、処理はクラスに置く（`⚡*.blade.php` は phpstan が見ないため）
 - 公開側の画面は `layouts/public.blade.php`、ログイン後の画面はこれまでの `layouts/app`
+- 購入のルート（購入確認・完了）は `auth` だけで守り、`verified` は付けない。ゲストが詳細で選ぶと、選択をセッション `purchase.{event_id}` に残してログインへ送り、ログイン後に購入確認へ戻す
+- 1回に買えるのは券種ごとに1〜10枚（`OrderService::MAX_QUANTITY`）。「終わったイベント」は `Event::isFinished()`（`ends_at` が過去）で判定し、下書き・非公開・終了済みは買えない
+- 買えない理由は `PurchaseException` で投げ、画面で `addError('purchase')` → `flux:callout` で出す。`Order` / `OrderItem` は `$fillable` を持たず、プロパティに直接入れて保存する
+- `OrderPolicy::view` は本人・そのイベントの主催者・管理者に許す
 
 ### 段階1（残り）
-5. 購入の注文作成（C8, C9）: 詳細で券種ごとに1〜10枚を選ぶ → 購入確認 `/events/{event}/purchase` → `App\Services\OrderService::createOrder`（`lockForUpdate`、単価は DB から）。作ったあとはいったんイベント詳細に戻す（工程7で Stripe へ差し替える） → T6〜T8
 6. エラー文の項目名を日本語にする（C17）: `lang/ja/validation.php` の `attributes` に足す
 
 ### 段階2（決済とメール。`feature/payments` ブランチで進める。詳細は [決済とメールの流れ](doc/spec/04_flows_tests_seed.md)）

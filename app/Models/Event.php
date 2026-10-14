@@ -98,4 +98,12 @@ class Event extends Model
     {
         return $this->status === EventStatus::Published;
     }
+
+    /**
+     * Determine whether the event has already ended.
+     */
+    public function isFinished(): bool
+    {
+        return $this->ends_at->isPast();
+    }
 }
