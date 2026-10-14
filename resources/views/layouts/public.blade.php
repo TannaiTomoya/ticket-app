@@ -12,7 +12,7 @@
                     イベント一覧
                 </flux:navbar.item>
                 @auth
-                    <flux:navbar.item icon="clipboard-document-list" :href="url('/orders')" :current="request()->is('orders*')" wire:navigate>
+                    <flux:navbar.item icon="clipboard-document-list" :href="route('orders.index')" :current="request()->is('orders*')" wire:navigate>
                         マイチケット
                     </flux:navbar.item>
                 @endauth
@@ -44,7 +44,7 @@
                         </div>
                         <flux:menu.separator />
                         <flux:menu.item icon="ticket" :href="route('home')" wire:navigate class="sm:hidden">イベント一覧</flux:menu.item>
-                        <flux:menu.item icon="clipboard-document-list" :href="url('/orders')" wire:navigate class="sm:hidden">マイチケット</flux:menu.item>
+                        <flux:menu.item icon="clipboard-document-list" :href="route('orders.index')" wire:navigate class="sm:hidden">マイチケット</flux:menu.item>
                         @can('create', App\Models\Event::class)
                             <flux:menu.item icon="calendar-days" :href="route('organizer.events.index')" wire:navigate class="sm:hidden">主催者メニュー</flux:menu.item>
                         @endcan

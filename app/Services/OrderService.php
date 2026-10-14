@@ -4,14 +4,17 @@ namespace App\Services;
 
 use App\Enums\OrderStatus;
 use App\Exceptions\PurchaseException;
+use App\Mail\OrderPaidMail;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\TicketType;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Stripe\Checkout\Session;
 use Stripe\Exception\ApiErrorException;
+use Throwable;
 
 class OrderService
 {
@@ -96,8 +99,8 @@ class OrderService
     }
 
     /**
-     * Mark the order as paid and issue one ticket per purchased seat.
-     * Only a pending order is updated, so concurrent calls confirm it once.
+     * Mark the order as paid, issue one ticket per purchased seat and mail the buyer.
+     * Only a pending order is updated, so concurrent calls confirm it (and send the mail) once.
      */
     public function markAsPaid(Order $order, ?string $paymentIntentId = null): bool
     {
@@ -125,7 +128,26 @@ class OrderService
 
         $order->refresh();
 
+        if ($paid) {
+            $this->sendPaidMail($order);
+        }
+
         return $paid;
+    }
+
+    /**
+     * Send the purchase mail outside the transaction. A failure is only reported,
+     * because the order is already paid and must not turn into a failed webhook.
+     */
+    private function sendPaidMail(Order $order): void
+    {
+        $order->load(['user', 'event', 'items.ticketType']);
+
+        try {
+            Mail::to($order->user)->send(new OrderPaidMail($order));
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
