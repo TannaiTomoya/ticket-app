@@ -21,14 +21,6 @@
                         主催者メニュー
                     </flux:navbar.item>
                 @endcan
-                @if (auth()->user()?->isAdmin())
-                    <flux:navbar.item icon="shield-check" :href="url('/admin/events')" :current="request()->is('admin/events*')" wire:navigate>
-                        イベント管理
-                    </flux:navbar.item>
-                    <flux:navbar.item icon="users" :href="url('/admin/users')" :current="request()->is('admin/users*')" wire:navigate>
-                        ユーザー管理
-                    </flux:navbar.item>
-                @endif
             </flux:navbar>
 
             <flux:spacer />
@@ -48,10 +40,6 @@
                         @can('create', App\Models\Event::class)
                             <flux:menu.item icon="calendar-days" :href="route('organizer.events.index')" wire:navigate class="sm:hidden">主催者メニュー</flux:menu.item>
                         @endcan
-                        @if (auth()->user()->isAdmin())
-                            <flux:menu.item icon="shield-check" :href="url('/admin/events')" wire:navigate class="sm:hidden">イベント管理</flux:menu.item>
-                            <flux:menu.item icon="users" :href="url('/admin/users')" wire:navigate class="sm:hidden">ユーザー管理</flux:menu.item>
-                        @endif
                         <flux:menu.item icon="cog" :href="route('profile.edit')" wire:navigate>{{ __('Settings') }}</flux:menu.item>
                         <form method="POST" action="{{ route('logout') }}" class="w-full">
                             @csrf

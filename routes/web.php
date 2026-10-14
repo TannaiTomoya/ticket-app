@@ -21,7 +21,7 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', fn (Request $request) => redirect(match ($request->user()->role) {
-        UserRole::Admin => '/admin/events',
+        UserRole::Admin => route('home'),
         UserRole::Organizer => route('organizer.events.index'),
         UserRole::Customer => route('orders.index'),
     }))->name('dashboard');

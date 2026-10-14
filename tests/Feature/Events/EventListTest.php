@@ -106,7 +106,7 @@ test('guests can view the list and see login and register links', function () {
         ->assertDontSee('data-test="public-user-menu"', false);
 });
 
-test('signed in users see the menu items for their role', function (Closure $makeUser, bool $seesOrganizerMenu, bool $seesAdminMenu) {
+test('signed in users see the menu items for their role', function (Closure $makeUser, bool $seesOrganizerMenu) {
     $this->actingAs($makeUser());
 
     $response = $this->get(route('home'));
@@ -114,17 +114,16 @@ test('signed in users see the menu items for their role', function (Closure $mak
     $response->assertOk()
         ->assertSee('data-test="public-user-menu"', false)
         ->assertSee('マイチケット')
-        ->assertDontSee('会員登録');
+        ->assertDontSee('会員登録')
+        ->assertDontSee('イベント管理')
+        ->assertDontSee('ユーザー管理');
     $seesOrganizerMenu
         ? $response->assertSee('主催者メニュー')
         : $response->assertDontSee('主催者メニュー');
-    $seesAdminMenu
-        ? $response->assertSee('イベント管理')->assertSee('ユーザー管理')
-        : $response->assertDontSee('イベント管理')->assertDontSee('ユーザー管理');
 })->with([
-    'customer' => [fn () => User::factory()->create(), false, false],
-    'organizer' => [fn () => User::factory()->organizer()->create(), true, false],
-    'admin' => [fn () => User::factory()->admin()->create(), false, true],
+    'customer' => [fn () => User::factory()->create(), false],
+    'organizer' => [fn () => User::factory()->organizer()->create(), true],
+    'admin' => [fn () => User::factory()->admin()->create(), false],
 ]);
 
 test('the events path redirects to the event list', function () {
