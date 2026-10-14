@@ -12,7 +12,7 @@ new #[Layout('layouts::public'), Title('イベント一覧')] class extends Comp
     use WithPagination;
 
     /**
-     * Get the published upcoming events, nearest first, with their lowest price.
+     * Get the published upcoming events, nearest first, with their lowest and highest prices.
      *
      * @return LengthAwarePaginator<int, Event>
      */
@@ -23,6 +23,7 @@ new #[Layout('layouts::public'), Title('イベント一覧')] class extends Comp
             ->published()
             ->upcoming()
             ->withMin('ticketTypes', 'price')
+            ->withMax('ticketTypes', 'price')
             ->orderBy('starts_at')
             ->paginate(12);
     }
@@ -57,7 +58,13 @@ new #[Layout('layouts::public'), Title('イベント一覧')] class extends Comp
                         </div>
                         @if ($event->ticket_types_min_price !== null)
                             <flux:badge color="zinc">
-                                {{ (int) $event->ticket_types_min_price === 0 ? '無料' : number_format($event->ticket_types_min_price).'円〜' }}
+                                @if ((int) $event->ticket_types_max_price === 0)
+                                    無料
+                                @elseif ((int) $event->ticket_types_min_price === 0)
+                                    無料〜
+                                @else
+                                    {{ number_format($event->ticket_types_min_price) }}円〜
+                                @endif
                             </flux:badge>
                         @endif
                     </flux:card>

@@ -43,7 +43,7 @@ test('each event shows its lowest price', function () {
         ->assertDontSee('3,000円〜');
 });
 
-test('an event with a free ticket type shows free as its lowest price', function () {
+test('an event with free and paid ticket types shows free with a tilde', function () {
     $event = Event::factory()->published()->create();
     TicketType::factory()->for($event)->create(['price' => 3000]);
     TicketType::factory()->for($event)->free()->create();
@@ -51,9 +51,20 @@ test('an event with a free ticket type shows free as its lowest price', function
     $response = $this->get(route('home'));
 
     $response->assertOk()
-        ->assertSee('無料')
-        ->assertDontSee('無料〜')
+        ->assertSee('無料〜')
         ->assertDontSee('3,000円〜');
+});
+
+test('an event whose ticket types are all free shows free without a tilde', function () {
+    $event = Event::factory()->published()->create();
+    TicketType::factory()->for($event)->free()->create();
+    TicketType::factory()->for($event)->free()->create(['name' => '小学生']);
+
+    $response = $this->get(route('home'));
+
+    $response->assertOk()
+        ->assertSee('無料')
+        ->assertDontSee('無料〜');
 });
 
 test('a message is shown when there are no events', function () {
